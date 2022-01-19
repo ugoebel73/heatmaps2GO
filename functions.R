@@ -34,6 +34,83 @@ get_tx2gene_from_extractor <- function(ensDb) {
                               dplyr::mutate(TXNAME = paste0("transcript:", 
                                                             TXNAME))
 }
-
-
 ## -----------------------------------------------------------------------------
+## Functions to accomplish the following task:
+## Partition the genes annotated to GO terms such that
+## (1) the gene sets of the partition do not overlap
+## (2) the partition is such that 
+##   each set has a high (if possible: maximal) number of GO terms 
+##   shared by all set members,
+##   and also a high (if possible: maximal) number of GO terms 
+##   which are NOT assigned to any set member
+##   (where shared presence should have a higher weight than shared absence)
+
+#' make_setMembership_partition 
+#' @param setList a named lists of items (of any atomic type)
+#' 
+make_setMembership_partition <- function(setList) {
+  
+  ## get all possible combinatorial combinations of the input list elements
+  combinations <- sapply(1:(2^length(setList)-1),
+                         function(i) as.logical(intToBits(i))[1:length(setList)])
+  rownames(combinations) <- names(setList)
+  
+  ## for each combinatorial combination of list elements,
+  ## find the items that occur 
+  ## (1) in all elements of the combination
+  ## (2) in no other list element
+  sets <- apply(combinations,2,
+                function(x) {
+                  setdiff(Reduce(intersect,setList[names(x)[which( x)]]), 
+                          Reduce(union    ,setList[names(x)[which(!x)]])  
+                  ) 
+                })
+  
+  storage.mode(combinations) <- "integer" ## for readability in the output
+  
+  tibble(data.frame(t(combinations)), ## columns = list elements;
+         ## rows = 0/1 indicator vectors representing a column combination
+         set=sets,                    ## the items in each combination
+         setSize=sapply(sets,length)  ## the number of items in each combination
+  ) %>% filter(setSize>0) %>% arrange(desc(setSize)) 
+  
+}
+
+
+
+#' cluster_setMembership_vectors
+#' @param v a matrix or data.frame with columns=list elements, rows = 0/1 indicator vectors
+#' 
+cluster_setMembership_vectors <- function(v,by="GOSemSim",...) {
+  if(by=="GOSemSim") {
+    cluster_GO_vectors(v,semData) 
+  } else {
+    stop('Currently "GOSemSim" is the only clustering method supported by cluster_setMembership_vectors()!')
+  }
+  
+}
+
+#' cluster_GO_vectors
+#' @param v a matrix or data.frame with columns=list elements, rows = 0/1 indicator vectors
+#' @param semData (parameter of GOSemSim::mgoSim) GOSemSimDATA object
+#' @param measure (parameter of GOSemSim::mgoSim) One of "Resnik", "Lin", "Rel", "Jiang", "TCSS", "Wang" 
+#' @param combine (parameter of GOSemSim::mgoSim) One of "max", "avg", "rcmax", "BMA" 
+#' @param nclus cut the tree of GO similarities such that nclus clusters are returned
+#'
+cluster_GO_vectors <- function(v,semData, measure = "Wang", combine = "BMA",nclus=10) {
+  v <- as.matrix(v)
+  row2vec <- function(i,v) colnames(v)[as.logical(v[i,])]
+  
+  m <- matrix(NA,nrow=nrow(v),ncol=nrow(v))
+  for(i in 1:nrow(v)) {
+    for(j in 1:nrow(v)) m[i,j] <- mgoSim(row2vec(i,v), row2vec(j,v), semData)
+  }
+  if(max(m)<1) {
+    stop("Similarity value >1 found in cluster_GO_vectors!\n")
+  }
+  
+  tmp <- cutree(hclust(as.dist(1-m)),k=nclus)
+  
+  tapply(1:length(tmp),tmp,c)
+}
+
