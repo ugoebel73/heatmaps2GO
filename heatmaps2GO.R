@@ -8,6 +8,34 @@ org_name <- "Mus musculus"
 ensembl_version <- 102
 
 ## --------------------------------------------------------------------------
+## the GO terms of interest:
+GO_terms <- read.csv("GO_terms.csv",comment.char="#")[,"GO_term"]
+
+## --------------------------------------------------------------------------
+## GO evidence code definitions:
+path <- "DATA/GO_evidence_codes.tsv"
+GO_evidence <- read.csv(path,sep="\t",comment.char="#")
+
+## --------------------------------------------------------------------------
+## currently valid GO terms from GO.db:
+all_GO_terms <- DBI::dbGetQuery(GO.db::GO_dbconn(), 
+                                "SELECT go_id as GO_term, 
+                                 ontology as Ontology FROM go_term") 
+print(GO.db::GO.db)
+##GODb object:
+#  | GOSOURCENAME: Gene Ontology
+#| GOSOURCEURL: http://current.geneontology.org/ontology/go-basic.obo
+#| GOSOURCEDATE: 2021-09-01
+#| Db type: GODb
+#| package: AnnotationDbi
+#| DBSCHEMA: GO_DB
+#| GOEGSOURCEDATE: 2021-Sep13
+#| GOEGSOURCENAME: Entrez Gene
+#| GOEGSOURCEURL: ftp://ftp.ncbi.nlm.nih.gov/gene/DATA
+#| DBSCHEMAVERSION: 2.1
+
+## --------------------------------------------------------------------------
+
 ## Richard Acton's solution for downloading an EnsDb:
 extractor_function <- make_ensdb_extractor(org_name,
                                            ensembl_version)
@@ -42,34 +70,35 @@ org_genes2GO <- AnnotationDbi::select(org.Mm.eg.db,
                                                 "GOALL",
                                                 "EVIDENCEALL",
                                                 "ONTOLOGYALL"),
-                                      keytype="ENSEMBL")
-table(is.na(unique(org_genes2GO$GOALL)))
-##FALSE  TRUE 
-##22763     1 ## but nearly all v102 Ensembl Ids do have a GO annotation 
+                                      keytype="ENSEMBL") %>%
+                dplyr::filter(GOALL %in% all_GO_terms$GO_term)
 
 ## add an indicator column for whether or not a gene is in DGE_genes:
 org_genes2GO$in_DGE <- org_genes2GO$ENSEMBL %in% DGE_genes
 ## --------------------------------------------------------------------------
 ## For comparison: Ensembl v102 data from biomaRt
 mart102 <- biomaRt::useMart(biomart="ENSEMBL_MART_ENSEMBL",
-                           dataset="mmusculus_gene_ensembl",
-                           host=biomaRt::listEnsemblArchives() %>% 
+                            dataset="mmusculus_gene_ensembl",
+                            host=biomaRt::listEnsemblArchives() %>% 
+                             
                              dplyr::filter(version=="102") %>% 
                              pull(url))
-biomaRt_v102_genes <-    biomaRt::getBM(attributes = c("ensembl_gene_id",
-                                                       "external_gene_name",
-                                                       "go_id"),
-                                        mart=mart102)                        
-## --------------------------------------------------------------------------
-## GO evidence code definitions:
-path <- "DATA/GO_evidence_codes.tsv"
-GO_evidence <- read.csv(path,sep="\t",comment.char="#")
+
+biomaRt_v102_genes2GO <-    biomaRt::getBM(attributes = c("ensembl_gene_id",
+                                                          "external_gene_name",
+                                                          "go_id",
+                                                          "go_linkage_type"),
+                                        mart=mart102)         %>%
+                            
+                            dplyr::filter(go_id %in% all_GO_terms$GO_term) %>% 
+                            rename(ENSEMBL=ensembl_gene_id)   %>%
+                            rename(SYMBOL=external_gene_name) %>%
+                            rename(Evidence=go_linkage_type)  %>%
+                            rename(GO_term=go_id)
+biomaRt_genes2GO$in_DGE <- biomaRt_genes2GO$ENSEMBL %in% DGE_genes
 
 ## --------------------------------------------------------------------------
-
-## the GO terms of interest:
-GO_terms <- read.csv("GO_terms.csv",comment.char="#")[,"GO_term"]
-## .. and the associated gene lists:
+## gene lists by OrgDb GO terms:
 GO_genesets <- sapply(list(all=TRUE,
                            dge=org_genes2GO$in_DGE),
                       function(cnd) {
@@ -103,6 +132,16 @@ get_geneset_column <- function(tag="all",field="ENSEMBL") {
 }  
 
 ## --------------------------------------------------------------------------
+## gene lists by biomaRt GO terms:
+GO_genesets_biomaRt <- sapply(list(all=TRUE,
+                                   dge=org_genes2GO$in_DGE),
+                              function(cnd) {
+                                  biomaRt_genes2GO[cnd,] %>% 
+                                  filter(GO_term %in% GO_terms) %>% 
+                                  select(-in_DGE) %>% 
+                                  nest_by(GO_term,
+                                          Ontology, .key="gene_set")
+                              },simplify=FALSE)
 
 
 
