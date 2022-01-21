@@ -35,8 +35,50 @@ get_tx2gene_from_extractor <- function(ensDb) {
                                                             TXNAME))
 }
 ## -----------------------------------------------------------------------------
-## Functions to accomplish the following task:
-## Partition the genes annotated to GO terms such that
+## Functions for defining sets of genes or terms based on the GO DAG structure:
+
+more_specific_genes <- function(go_term,GO2entrez=org.Mm.egGO2EG) {
+  ## get the genes directly associated with the query term
+  genes <- unique(GO2entrez[[go_term]]) 
+  
+  ## get the direct children of the query term
+  ch <- as.list(GO.db::GOBPCHILDREN)[[go_term]]
+  
+  ## recurse for each child term, merge results
+  for(g in ch[!is.na(ch)]) {
+    genes <- union(genes,
+                   more_specific_genes(g,GO2entrez=GO2entrez))
+  }
+  genes
+}
+
+less_specific_GOs <- function(go_term,GO2entrez=org.Hs.egGO2EG) {
+  terms <- go_term
+  ch <- setdiff(as.list(GO.db::GOBPPARENTS)[[go_term]], "all") 
+  
+  for(g in ch[!is.na(ch)]) {
+    terms <- union(terms,
+                   less_specific_GOs(g,GO2entrez=GO2entrez)) 
+    
+  }
+  terms
+}
+more_specific_GOs <- function(go_term,GO2entrez=org.Hs.egGO2EG) {
+  terms <- go_term
+  ch <- as.list(GO.db::GOBPCHILDREN)[[go_term]]
+  
+  for(g in ch[!is.na(ch)]) {
+    terms <- union(terms,
+                   more_specific_GOs(g,GO2entrez=GO2entrez)) 
+    
+  }
+  terms
+}
+
+
+
+## -----------------------------------------------------------------------------
+## Functions for partitioning genes sets annotated to GO terms, such that
 ## (1) the gene sets of the partition do not overlap
 ## (2) the partition is such that 
 ##   each set has a high (if possible: maximal) number of GO terms 
