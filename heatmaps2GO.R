@@ -28,6 +28,8 @@ names(GO_synonyms) <- sapply(GO_synonyms,function(x)x@GOID)
 
 ## can get definitions from
 ## as.list(GO.db::GOTERM)  <<<--- explore! 
+GO_info <- as.list(GO.db::GOTERM)
+names(GO_info) <- sapply(GO_info,function(x)x@GOID)
 
 print(GO.db::GO.db) ## later also used to get parent/child relations
 ##GODb object:
@@ -281,6 +283,7 @@ biomaRt_v102_genes2GO %>% filter(ENSEMBL %in% g) %>%
 ##[17] "Psmb8"  "Psma6"  "Uba52"  "Psmd3"  "Psmc1"  "Psmc2"  "Psma2"  "Psmb10"
 ##[25] "Psmb1" 
 
+
 t <- biomaRt_v102_genes2GO %>% filter(ENSEMBL %in% g) %>%
                                distinct(GO_term) %>% pull(GO_term)
 length(unique(t))
@@ -312,8 +315,210 @@ sapply(GO_synonyms[intersect(t, names(GO_synonyms))],
 #FALSE      FALSE      FALSE      FALSE      FALSE      FALSE      FALSE 
 #GO:0042098 
 #FALSE 
+## sapply(t,function(x)GO_info[[x]]@Term)
+## GO:0005524 
+## "ATP binding" 
+## GO:0005634 
+## "nucleus" 
+## GO:0005654 
+## "nucleoplasm" 
+## GO:0005829 
+## "cytosol" 
+## GO:0005737 
+## "cytoplasm" 
+## GO:0000166 
+## "nucleotide binding" 
+## GO:0016787 
+## "hydrolase activity" 
+## GO:0016887 
+## "ATP hydrolysis activity" 
+## GO:0016234 
+## "inclusion body" 
+## GO:0045202 
+## "synapse" 
+## GO:0000502 
+## "proteasome complex" 
+## GO:0036402 
+## "proteasome-activating activity" 
+## GO:0030163 
+## "protein catabolic process" 
+## GO:1901800 
+## "positive regulation of proteasomal protein catabolic process" 
+## GO:0001824 
+## "blastocyst development" 
+## GO:0008540 
+## "proteasome regulatory particle, base subcomplex" 
+## GO:0022624 
+## "proteasome accessory complex" 
+## GO:0031597 
+## "cytosolic proteasome complex" 
+## GO:0045899 
+## "positive regulation of RNA polymerase II transcription preinitiation complex assembly" 
+## GO:0008537 
+## "proteasome activator complex" 
+## GO:0005515 
+## "protein binding" 
+## GO:0061133 
+## "endopeptidase activator activity" 
+## GO:0019884 
+## "antigen processing and presentation of exogenous antigen" 
+## GO:0010950 
+## "positive regulation of endopeptidase activity" 
+## GO:0061136 
+## "regulation of proteasomal protein catabolic process" 
+## GO:2000045 
+## "regulation of G1/S transition of mitotic cell cycle" 
+## GO:0042802 
+## "identical protein binding" 
+## GO:0043161 
+## "proteasome-mediated ubiquitin-dependent protein catabolic process" 
+## GO:0008233 
+## "peptidase activity" 
+## GO:0006508 
+## "proteolysis" 
+## GO:0004298 
+## "threonine-type endopeptidase activity" 
+## GO:0051603 
+## "proteolysis involved in cellular protein catabolic process" 
+## GO:0005839 
+## "proteasome core complex" 
+## GO:0004175 
+## "endopeptidase activity" 
+## GO:0010498 
+## "proteasomal protein catabolic process" 
+## GO:0010499 
+## "proteasomal ubiquitin-independent protein catabolic process" 
+## GO:0019774 
+## "proteasome core complex, beta-subunit complex" 
+## GO:0036064 
+## "ciliary basal body" 
+## GO:0001530 
+## "lipopolysaccharide binding" 
+## GO:0002862 
+## "negative regulation of inflammatory response to antigenic stimulus" 
+## GO:0006979 
+## "response to oxidative stress" 
+## GO:0005813 
+## "centrosome" 
+## GO:0003674 
+## "molecular_function" 
+## GO:0008541 
+## "proteasome regulatory particle, lid subcomplex" 
+## GO:0005838 
+## "proteasome regulatory particle" 
+## GO:0031595 
+## "nuclear proteasome complex" 
+## GO:0006511 
+## "ubiquitin-dependent protein catabolic process" 
+## GO:0019773 
+## "proteasome core complex, alpha-subunit complex" 
+## GO:0098794 
+## "postsynapse" 
+## GO:0008134 
+## "transcription factor binding" 
+## GO:0031593 
+## "polyubiquitin modification-dependent protein binding" 
+## GO:0043248 
+## "proteasome assembly" 
+## GO:0010243 
+## "response to organonitrogen compound" 
+## GO:0014070 
+## "response to organic cyclic compound" 
+## GO:0031625 
+## "ubiquitin protein ligase binding" 
+## GO:0052548 
+## "regulation of endopeptidase activity" 
+## GO:0002376 
+## "immune system process" 
+## GO:2000116 
+## "regulation of cysteine-type endopeptidase activity" 
+## GO:0048471 
+## "perinuclear region of cytoplasm" 
+## GO:0042803 
+## "protein homodimerization activity" 
+## GO:0046982 
+## "protein heterodimerization activity" 
+## GO:0005783 
+## "endoplasmic reticulum" 
+## GO:0070628 
+## "proteasome binding" 
+## GO:1901799 
+## "negative regulation of proteasomal protein catabolic process" 
+## GO:0030154 
+## "cell differentiation" 
+## GO:0045444 
+## "fat cell differentiation" 
+## GO:0019882 
+## "antigen processing and presentation" 
+## GO:1990111 
+## "spermatoproteasome complex" 
+## GO:0051092 
+## "positive regulation of NF-kappaB transcription factor activity" 
+## GO:0000932 
+## "P-body" 
+## GO:0030016 
+## "myofibril" 
+## GO:0003723 
+## "RNA binding" 
+## GO:0030017 
+## "sarcomere" 
+## GO:0051059 
+## "NF-kappaB binding" 
+## GO:0007519 
+## "skeletal muscle tissue development" 
+## GO:0005844 
+## "polysome" 
+## GO:0016363 
+## "nuclear matrix" 
+## GO:0003735 
+## "structural constituent of ribosome" 
+## GO:0006412 
+## "translation" 
+## GO:0005840 
+## "ribosome" 
+## GO:0031386 
+## "protein tag" 
+## GO:0015935 
+## "small ribosomal subunit" 
+## GO:0016567 
+## "protein ubiquitination" 
+## GO:0043209 
+## "myelin sheath" 
+## GO:0022625 
+## "cytosolic large ribosomal subunit" 
+## GO:0019941 
+## "modification-dependent protein catabolic process" 
+## GO:0022627 
+## "cytosolic small ribosomal subunit" 
+## GO:0042176 
+## "regulation of protein catabolic process" 
+## GO:0030234 
+## "enzyme regulator activity" 
+## GO:0050790 
+## "regulation of catalytic activity" 
+## GO:0016020 
+## "membrane" 
+## GO:1901215 
+## "negative regulation of neuron death" 
+## GO:0017025 
+## "TBP-class protein binding" 
+## GO:0043197 
+## "dendritic spine" 
+## GO:0036464 
+## "cytoplasmic ribonucleoprotein granule" 
+## GO:0000902 
+## "cell morphogenesis" 
+## GO:0042098 
+## "T cell proliferation" 
 
-## like the information transfer was via
+
+## --> restrict to BP!
+## --> make a table of GO terms per the 25 genes: which are best?
+
+
+
+
+## likely the information transfer was via
 ## ENSEMBL from DGE (1)-> symbol (2)-> mapped to (?human) Enrichr symbol 
 ##                  (3)-> associated with GO term in Enrichr database
 ##                  (4)-> back-associated with original Ensembl ID
