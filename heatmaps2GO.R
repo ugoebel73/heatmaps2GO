@@ -245,6 +245,7 @@ org_genes2GO %>%
 ## Where is the Enrichr annotation coming from?
 
 load("/home/ugoebel/CECAD/Pipeline/Git/Heatmaps/heatmaps2GO_test/Reproduce/enrichr_proteasome_mapping.RData")
+## (this is the group 3 of groups_464, consisting of proteasome genes only)
 enrichr_proteasome_mapping <- unlist(enrichr_proteasome_mapping) ## all length 1
 length(enrichr_proteasome_mapping)
 ##[1] 25 
@@ -261,11 +262,6 @@ enrichr_proteasome_GOs <- sub("\\.",":",sub("\\s+","", enrichr_proteasome_GOs))
 all(sub(":\\d+%","",enrichr_proteasome_GOs) %in% GO_terms$GO_term)
 ##[1] TRUE  ## should be TRUE, because this is a subset of our_GO_terms
 
-nrow(biomaRt_v102_genes2GO %>% filter(GO_term %in% 
-                                      sub(":\\d+%","",
-                                          enrichr_proteasome_GOs)) %>%
-                               distinct(ENSEMBL))
-##[1] 392
 g <- biomaRt_v102_genes2GO %>% filter(ENSEMBL %in% 
                                       enrichr_proteasome_mapping)  %>%
                                       distinct(ENSEMBL) %>% pull(ENSEMBL)
@@ -276,12 +272,96 @@ table(g %in% DGE_genes) ## and they are all in our analysis set
 ##TRUE 
 ##  25 
 
-biomaRt_v102_genes2GO %>% filter(ENSEMBL %in% g) %>%
-                          distinct(SYMBOL) %>% pull(SYMBOL)
+g_symbols <- biomaRt_v102_genes2GO %>% filter(ENSEMBL %in% g) %>%
+                                       distinct(SYMBOL) %>% pull(SYMBOL)
 ##[1] "Psmc4"  "Psme1"  "Psme2"  "Psmb3"  "Psmb4"  "Psmb5"  "Psmd12" "Psma7" 
 ##[9] "Psmd4"  "Psma5"  "Psmb2"  "Psmb6"  "Psmb7"  "Psma3"  "Psmb9"  "Psmf1" 
 ##[17] "Psmb8"  "Psma6"  "Uba52"  "Psmd3"  "Psmc1"  "Psmc2"  "Psma2"  "Psmb10"
 ##[25] "Psmb1" 
+
+## But they are not associated with our_GO_terms in biomaRt or in org.Mm.eg.db,
+## except for one gene:
+tmp <- setNames(sapply(GO_genesets[["biomaRt_all_inclusive"]],
+                       function(x)intersect(x,g)),
+                GO_genesets$GO_term)
+tmp[sapply(tmp,length)>0]
+##$`GO:0050727`
+##[1] "ENSMUSG00000005779"
+
+tmp <- setNames(sapply(GO_genesets[["org_all"]],
+                       function(x)intersect(x,g)),
+                GO_genesets$GO_term)
+tmp[sapply(tmp,length)>0]
+##$`GO:0050727`
+##[1] "ENSMUSG00000005779"
+
+
+## With which terms were the 25 genes actually associated in Enrichr?
+source("functions_enrichr.R")
+Enrichr_dbs <- sapply(read_Enrichr_dbs(Enrichr_base="DATA"),
+                      function(x) {
+                        y <- x$genes
+                        names(y) <- extractCapturedSubstrings(
+                                       pattern="\\((GO:\\d+)\\)$",
+                                       string=names(y))    
+                        y 
+                      })
+sapply(toupper(g_symbols),function(this_g)  
+  names(which(
+    sapply(Enrichr_dbs[["GO_Biological_Process_2018"]][our_GO_terms],
+           function(x)this_g %in% x)
+    ))
+)
+## $PSMC4
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSME1
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSME2
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMB3
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMB4
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMB5
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMD12
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0043312" "GO:0071456"
+## $PSMA7
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMD4
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMA5
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0043312" "GO:0071456"
+## $PSMB2
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMB6
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMB7
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0043312" "GO:0071456"
+## $PSMA3
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMB9
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMF1
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMB8
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0071357" "GO:0002479" "GO:0071456"
+## $PSMA6
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0050727" "GO:0002479" "GO:0071456"
+## $UBA52
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0071456"
+## $PSMD3
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0043312" "GO:0071456"
+## $PSMC1
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMC2
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0043312" "GO:0071456"
+## $PSMA2
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0043312" "GO:0071456"
+## $PSMB10
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0071456"
+## $PSMB1
+## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0043312" "GO:0071456"                        
 
 
 t <- biomaRt_v102_genes2GO %>% filter(ENSEMBL %in% g) %>%
@@ -290,8 +370,8 @@ length(unique(t))
 ##[1] 97
 length(intersect(our_GO_terms,t))
 ##[1] 0
-## the 25 genes are associated with 97 different GO terms, 
-## but not with any term of our_GO_terms
+## the 25 genes *are* associated with 97 different GO terms, 
+## but non is even a synonym of our_GO_terms:
 
 length(which(t %in% names(GO_synonyms)))
 ##[1] 22
@@ -315,206 +395,89 @@ sapply(GO_synonyms[intersect(t, names(GO_synonyms))],
 #FALSE      FALSE      FALSE      FALSE      FALSE      FALSE      FALSE 
 #GO:0042098 
 #FALSE 
-## sapply(t,function(x)GO_info[[x]]@Term)
-## GO:0005524 
-## "ATP binding" 
-## GO:0005634 
-## "nucleus" 
-## GO:0005654 
-## "nucleoplasm" 
-## GO:0005829 
-## "cytosol" 
-## GO:0005737 
-## "cytoplasm" 
-## GO:0000166 
-## "nucleotide binding" 
-## GO:0016787 
-## "hydrolase activity" 
-## GO:0016887 
-## "ATP hydrolysis activity" 
-## GO:0016234 
-## "inclusion body" 
-## GO:0045202 
-## "synapse" 
-## GO:0000502 
-## "proteasome complex" 
-## GO:0036402 
-## "proteasome-activating activity" 
-## GO:0030163 
-## "protein catabolic process" 
-## GO:1901800 
-## "positive regulation of proteasomal protein catabolic process" 
-## GO:0001824 
-## "blastocyst development" 
-## GO:0008540 
-## "proteasome regulatory particle, base subcomplex" 
-## GO:0022624 
-## "proteasome accessory complex" 
-## GO:0031597 
-## "cytosolic proteasome complex" 
-## GO:0045899 
-## "positive regulation of RNA polymerase II transcription preinitiation complex assembly" 
-## GO:0008537 
-## "proteasome activator complex" 
-## GO:0005515 
-## "protein binding" 
-## GO:0061133 
-## "endopeptidase activator activity" 
-## GO:0019884 
-## "antigen processing and presentation of exogenous antigen" 
-## GO:0010950 
-## "positive regulation of endopeptidase activity" 
-## GO:0061136 
-## "regulation of proteasomal protein catabolic process" 
-## GO:2000045 
-## "regulation of G1/S transition of mitotic cell cycle" 
-## GO:0042802 
-## "identical protein binding" 
-## GO:0043161 
-## "proteasome-mediated ubiquitin-dependent protein catabolic process" 
-## GO:0008233 
-## "peptidase activity" 
-## GO:0006508 
-## "proteolysis" 
-## GO:0004298 
-## "threonine-type endopeptidase activity" 
-## GO:0051603 
-## "proteolysis involved in cellular protein catabolic process" 
-## GO:0005839 
-## "proteasome core complex" 
-## GO:0004175 
-## "endopeptidase activity" 
-## GO:0010498 
-## "proteasomal protein catabolic process" 
-## GO:0010499 
-## "proteasomal ubiquitin-independent protein catabolic process" 
-## GO:0019774 
-## "proteasome core complex, beta-subunit complex" 
-## GO:0036064 
-## "ciliary basal body" 
-## GO:0001530 
-## "lipopolysaccharide binding" 
-## GO:0002862 
-## "negative regulation of inflammatory response to antigenic stimulus" 
-## GO:0006979 
-## "response to oxidative stress" 
-## GO:0005813 
-## "centrosome" 
-## GO:0003674 
-## "molecular_function" 
-## GO:0008541 
-## "proteasome regulatory particle, lid subcomplex" 
-## GO:0005838 
-## "proteasome regulatory particle" 
-## GO:0031595 
-## "nuclear proteasome complex" 
-## GO:0006511 
-## "ubiquitin-dependent protein catabolic process" 
-## GO:0019773 
-## "proteasome core complex, alpha-subunit complex" 
-## GO:0098794 
-## "postsynapse" 
-## GO:0008134 
-## "transcription factor binding" 
-## GO:0031593 
-## "polyubiquitin modification-dependent protein binding" 
-## GO:0043248 
-## "proteasome assembly" 
-## GO:0010243 
-## "response to organonitrogen compound" 
-## GO:0014070 
-## "response to organic cyclic compound" 
-## GO:0031625 
-## "ubiquitin protein ligase binding" 
-## GO:0052548 
-## "regulation of endopeptidase activity" 
-## GO:0002376 
-## "immune system process" 
-## GO:2000116 
-## "regulation of cysteine-type endopeptidase activity" 
-## GO:0048471 
-## "perinuclear region of cytoplasm" 
-## GO:0042803 
-## "protein homodimerization activity" 
-## GO:0046982 
-## "protein heterodimerization activity" 
-## GO:0005783 
-## "endoplasmic reticulum" 
-## GO:0070628 
-## "proteasome binding" 
-## GO:1901799 
-## "negative regulation of proteasomal protein catabolic process" 
-## GO:0030154 
-## "cell differentiation" 
-## GO:0045444 
-## "fat cell differentiation" 
-## GO:0019882 
-## "antigen processing and presentation" 
-## GO:1990111 
-## "spermatoproteasome complex" 
-## GO:0051092 
-## "positive regulation of NF-kappaB transcription factor activity" 
-## GO:0000932 
-## "P-body" 
-## GO:0030016 
-## "myofibril" 
-## GO:0003723 
-## "RNA binding" 
-## GO:0030017 
-## "sarcomere" 
-## GO:0051059 
-## "NF-kappaB binding" 
-## GO:0007519 
-## "skeletal muscle tissue development" 
-## GO:0005844 
-## "polysome" 
-## GO:0016363 
-## "nuclear matrix" 
-## GO:0003735 
-## "structural constituent of ribosome" 
-## GO:0006412 
-## "translation" 
-## GO:0005840 
-## "ribosome" 
-## GO:0031386 
-## "protein tag" 
-## GO:0015935 
-## "small ribosomal subunit" 
-## GO:0016567 
-## "protein ubiquitination" 
-## GO:0043209 
-## "myelin sheath" 
-## GO:0022625 
-## "cytosolic large ribosomal subunit" 
-## GO:0019941 
-## "modification-dependent protein catabolic process" 
-## GO:0022627 
-## "cytosolic small ribosomal subunit" 
-## GO:0042176 
-## "regulation of protein catabolic process" 
-## GO:0030234 
-## "enzyme regulator activity" 
-## GO:0050790 
-## "regulation of catalytic activity" 
-## GO:0016020 
-## "membrane" 
-## GO:1901215 
-## "negative regulation of neuron death" 
-## GO:0017025 
-## "TBP-class protein binding" 
-## GO:0043197 
-## "dendritic spine" 
-## GO:0036464 
-## "cytoplasmic ribonucleoprotein granule" 
-## GO:0000902 
-## "cell morphogenesis" 
-## GO:0042098 
-## "T cell proliferation" 
 
+## these are the biological themes 
+## with which the 25 genes are associated in GO.db:
 
-## --> restrict to BP!
-## --> make a table of GO terms per the 25 genes: which are best?
-
+##sapply(t,function(x)GO_info[[x]]@Term)
+tmp <- sapply(t,
+              function(x) {
+                if (GO_info[[x]]@Ontology=="BP") GO_info[[x]]@Term
+                else                             NULL
+             })
+tmp[sapply(tmp,length)>0]
+## $`GO:0030163`
+## [1] "protein catabolic process"
+## $`GO:1901800`
+## [1] "positive regulation of proteasomal protein catabolic process"
+## $`GO:0001824`
+## [1] "blastocyst development"
+## $`GO:0045899`
+## [1] "positive regulation of RNA polymerase II transcription preinitiation complex assembly"
+## $`GO:0019884`
+## [1] "antigen processing and presentation of exogenous antigen"
+## $`GO:0010950`
+## [1] "positive regulation of endopeptidase activity"
+## $`GO:0061136`
+## [1] "regulation of proteasomal protein catabolic process"
+## $`GO:2000045`
+## [1] "regulation of G1/S transition of mitotic cell cycle"
+## $`GO:0043161`
+## [1] "proteasome-mediated ubiquitin-dependent protein catabolic process"
+## $`GO:0006508`
+## [1] "proteolysis"
+## $`GO:0051603`
+## [1] "proteolysis involved in cellular protein catabolic process"
+## $`GO:0010498`
+## [1] "proteasomal protein catabolic process"
+## $`GO:0010499`
+## [1] "proteasomal ubiquitin-independent protein catabolic process"
+## $`GO:0002862`
+## [1] "negative regulation of inflammatory response to antigenic stimulus"
+## $`GO:0006979`
+## [1] "response to oxidative stress"
+## $`GO:0006511`
+## [1] "ubiquitin-dependent protein catabolic process"
+## $`GO:0043248`
+## [1] "proteasome assembly"
+## $`GO:0010243`
+## [1] "response to organonitrogen compound"
+## $`GO:0014070`
+## [1] "response to organic cyclic compound"
+## $`GO:0052548`
+## [1] "regulation of endopeptidase activity"
+## $`GO:0002376`
+## [1] "immune system process"
+## $`GO:2000116`
+## [1] "regulation of cysteine-type endopeptidase activity"
+## $`GO:1901799`
+## [1] "negative regulation of proteasomal protein catabolic process"
+## $`GO:0030154`
+## [1] "cell differentiation"
+## $`GO:0045444`
+## [1] "fat cell differentiation"
+## $`GO:0019882`
+## [1] "antigen processing and presentation"
+## $`GO:0051092`
+## [1] "positive regulation of NF-kappaB transcription factor activity"
+## $`GO:0007519`
+## [1] "skeletal muscle tissue development"
+## $`GO:0006412`
+## [1] "translation"
+## $`GO:0016567`
+## [1] "protein ubiquitination"
+## $`GO:0019941`
+## [1] "modification-dependent protein catabolic process"
+## $`GO:0042176`
+## [1] "regulation of protein catabolic process"
+## $`GO:0050790`
+## [1] "regulation of catalytic activity"
+## $`GO:1901215`
+## [1] "negative regulation of neuron death"
+## $`GO:0000902`
+## [1] "cell morphogenesis"
+## $`GO:0042098`
+## [1] "T cell proliferation"
 
 
 
@@ -545,7 +508,7 @@ load("DATA/biomart_descriptors_102.RData") ## varname: descriptors102
 
 length(unique(descriptors_102$ensembl_gene_id))
 ##[1] 56305
-length(unique(biomaRt_v102_genes2GO$ENSEMBL))our_G
+length(unique(biomaRt_v102_genes2GO$ENSEMBL))
 ##[1] 22302 ## much less .. like due to removed empty GO terms:
 
 tmp <- biomaRt::getBM(attributes = c("ensembl_gene_id",
@@ -556,7 +519,27 @@ tmp <- biomaRt::getBM(attributes = c("ensembl_gene_id",
 length(unique(tmp$ensembl_gene_id))
 ##[1] 56305
 length(unique(tmp$ensembl_gene_id[tmp$go_id!=""]))
-##[1] 22303
-
+##[1] 22303 ## OK
 
 ## --------------------------------------------------------------------------
+## --------------------------------------------------------------------------
+## --------------------------------------------------------------------------
+## prepare input for heatmaps:
+indicators <- sapply(colnames(GO_genesets)[-1],
+                     function(n) make_setMembership_vectors(
+                                            setNames(GO_genesets[[n]],
+                                                     GO_genesets[["GO_term"]])
+                                            ),
+                    simplify=FALSE)
+
+geneset <- "biomaRt_dge_inclusive"
+m <- as.matrix(indicators[[geneset]][1:(ncol(indicators[[geneset]])-2)])
+nclus <- 8
+clusters <-  cluster_setMembership_vectors(by="hamming", 
+                                           v=m,nclus=nclus)
+  
+sapply(clusters,function(i) indicators[[geneset]][i,], simplify=FALSE)
+
+## not very nice ...
+
+
