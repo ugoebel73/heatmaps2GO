@@ -65,6 +65,21 @@ DGE_results <- sapply(readxl::excel_sheets(path),
 DGE_genes <- DGE_results[[1]]$ensembl_geneid ## same for all comparisons 
                                              ## -> use [[1]]
 ## --------------------------------------------------------------------------
+## significantly regulated  v100/102 Ensembl IDs:
+minAbsLFC <- log2(1.5) ## that is, abs(FoldChange)>=1.5 ##
+maxq_DGE <- 0.05
+significant_DGE_genes <- Reduce(union,
+                                lapply(DGE_results,
+                                       function(x) {
+                                          x %>% 
+                                          filter((adj.P.Val <= maxq_DGE) &
+                                                 (logFC     >= minAbsLFC)) %>%
+                                          pull(ensembl_geneid)
+                                        })
+                         )
+                                
+## --------------------------------------------------------------------------
+
 ## get an Ensembl ID (from Ens102 through biomaRt) <-> Gene Ontology relation 
 ## from the Mouse OrgDb package
 ## (note that the OrgDb genome builds are from NCBI, not Ensembl,
@@ -87,6 +102,8 @@ org_genes2GO <- AnnotationDbi::select(org.Mm.eg.db,
 
 ## add an indicator column for whether or not a gene is in DGE_genes:
 org_genes2GO$in_DGE <- org_genes2GO$ENSEMBL %in% DGE_genes
+org_genes2GO$in_sig <- org_genes2GO$ENSEMBL %in% significant_DGE_genes
+
 ## --------------------------------------------------------------------------
 ## get an Ensembl ID <-> Gene Ontology relation from biomRt:
 biomaRt_v102_genes2GO <-    biomaRt::getBM(attributes = c("ensembl_gene_id",
@@ -103,6 +120,8 @@ biomaRt_v102_genes2GO <-    biomaRt::getBM(attributes = c("ensembl_gene_id",
                             left_join(GO_terms,by="GO_term") ## join ontology
 
 biomaRt_v102_genes2GO$in_DGE <- biomaRt_v102_genes2GO$ENSEMBL %in% DGE_genes
+biomaRt_v102_genes2GO$in_sig <- 
+  biomaRt_v102_genes2GO$ENSEMBL %in% significant_DGE_genes
 
 ## Why biomaRt?
 ## pro: - version can be selected (while org.Mm.eg.de is current version only)
@@ -126,7 +145,8 @@ GO2genes <- sapply(c("org", "biomaRt_v102"),
                   function(var) {
                     var <- paste0(var, "_genes2GO")
                     lapply(list(all=TRUE,
-                                dge=eval(as.symbol(var))$in_DGE),
+                                dge=eval(as.symbol(var))$in_DGE,
+                                sig=eval(as.symbol(var))$in_sig),
                             function(cnd) {
                                 eval(as.symbol(var))[cnd,]              %>% 
                                      filter(GO_term %in% our_GO_terms)  %>% 
@@ -151,19 +171,27 @@ get_geneset_column <- function(tag="all",
                               '"]]$gene_set,function(x) x %>% dplyr::pull(',
                               field,
                               '))')))
-  names(l) <- GO2genes[[tag]]$GO_term
+  names(l) <- eval(parse(text=paste0(obj,'[["',tag,'"]]$GO_term')))
+  l <- l[our_GO_terms] ## orders and sets lists of missing terms to NULL
+  names(l) <- our_GO_terms ## in case there have been missing lists
+  
   l
 }  
 ## --------------------------------------------------------------------------
 ## Explore how gene sets defined by or.Mm.eg.de and biomaRt relate:
 
-GO_genesets <- tibble(GO_term=sort(our_GO_terms),
+GO_genesets <- tibble(GO_term=our_GO_terms,
                     org_all=lapply(get_geneset_column(), unique),
                     org_dge=lapply(get_geneset_column(tag="dge"), unique),
+                    org_sig=lapply(get_geneset_column(tag="sig"), unique),
+                    
                     biomaRt_all=lapply(get_geneset_column(
                       obj = "GO2genes$biomaRt_v102"), unique),
                     biomaRt_dge=lapply(get_geneset_column(
                       tag="dge",
+                      obj = "GO2genes$biomaRt_v102"),unique),
+                    biomaRt_sig=lapply(get_geneset_column(
+                      tag="sig",
                       obj = "GO2genes$biomaRt_v102"),unique)
                     )
 ##...........................................................................
@@ -176,52 +204,22 @@ child_terms <-  sapply(our_GO_terms,
                          more_specific_GOs(x,GO2entrez=org.Mm.egGO2EG)
                        },simplify=FALSE)
 
-for(tag in c("all","dge")) {
+for(tag in c("all","dge","sig")) {
   GO_genesets[[paste0("biomaRt_",tag,"_inclusive")]] <-
-        lapply(sort(our_GO_terms),
+        lapply(our_GO_terms,
                function(x) {
                  ##browser()
                  cnd <- biomaRt_v102_genes2GO$GO_term %in% child_terms[[x]]
                  if(tag=="dge") {
                    cnd <- cnd &  biomaRt_v102_genes2GO$in_DGE
+                 } else if (tag=="sig") {
+                   cnd <- cnd &  biomaRt_v102_genes2GO$in_sig
                  } 
                  unique(biomaRt_v102_genes2GO$ENSEMBL[cnd])
                })
 }
 
-## > GO_genesets
-## # A tibble: 10 × 7
-## GO_term    org_all     org_dge     biomaRt_all biomaRt_dge biomaRt_all_inclusive biomaRt_dge_inclusive
-## <chr>      <list>      <list>      <list>      <list>      <list>                <list>               
-##   1 GO:0002479 <chr [2]>   <chr [2]>   <chr [2]>   <chr [2]>   <chr [2]>             <chr [2]>            
-##   2 GO:0019221 <chr [395]> <chr [320]> <chr [144]> <chr [105]> <chr [423]>           <chr [334]>          
-##   3 GO:0033209 <chr [73]>  <chr [66]>  <chr [40]>  <chr [36]>  <chr [74]>            <chr [66]>           
-##   4 GO:0036294 <chr [130]> <chr [96]>  <chr [3]>   <chr [3]>   <chr [152]>           <chr [132]>          
-##   5 GO:0038061 <chr [116]> <chr [108]> <chr [10]>  <chr [10]>  <chr [119]>           <chr [107]>          
-##   6 GO:0043312 <chr [15]>  <chr [11]>  <chr [4]>   <chr [4]>   <chr [12]>            <chr [9]>            
-##   7 GO:0050727 <chr [336]> <chr [272]> <chr [85]>  <chr [76]>  <chr [347]>           <chr [261]>          
-##   8 GO:0070498 <chr [23]>  <chr [22]>  <chr [18]>  <chr [17]>  <chr [24]>            <chr [23]>           
-##   9 GO:0071357 <chr [50]>  <chr [44]>  <chr [3]>   <chr [3]>   <chr [45]>            <chr [38]>           
-##  10 GO:0071456 <chr [105]> <chr [92]>  <chr [119]> <chr [101]> <chr [142]>           <chr [122]>          
 
-## Note that lists with ~identical counts need not be identical 
-## (but they do share a non-trivial core):
-## > length(intersect(GO_genesets[[3,"org_all"]][[1]], 
-##                    GO_genesets[[3,"biomaRt_all_inclusive"]][[1]]))
-## [1] 62
-## > length(GO_genesets[[3,"org_all"]][[1]])
-## [1] 73
-## > length(GO_genesets[[3,"biomaRt_all_inclusive"]][[1]])
-## [1] 74
-
-
-## > length(intersect(GO_genesets[[4,"org_all"]][[1]], 
-##                    GO_genesets[[4,"biomaRt_all_inclusive"]][[1]]))
-## [1] 99
-## > length(GO_genesets[[4,"org_all"]][[1]])
-## [1] 130
-## > length(GO_genesets[[4,"biomaRt_all_inclusive"]][[1]])
-## [1] 152
 ## ..........................................................................
 ## Where are the proteasome-related genes that are in the Enrichr heatmaps,
 ## but no longer in the org.Mm.eg.db-based ones?
@@ -231,14 +229,18 @@ proteasome_symbols <- groups_464[[3]]
 biomaRt_v102_genes2GO %>% 
   filter((SYMBOL %in% proteasome_symbols) &
          (ENSEMBL %in% Reduce(union,
-                              GO_genesets$biomaRt_all_inclusive)))
+                              GO_genesets$biomaRt_all_inclusive))) %>%
+  select(ENSEMBL,SYMBOL) %>% distinct(ENSEMBL,SYMBOL)
 ## a single gene (same for "all" and "dge")
-## ENSMUSG00000005779  Psmb4
+##              ENSEMBL SYMBOL
+## 1 ENSMUSG00000005779  Psmb4
+
 
 org_genes2GO %>% 
   filter((SYMBOL %in% proteasome_symbols) &
            (ENSEMBL %in% Reduce(union,
-                                GO_genesets$org_all)))
+                                GO_genesets$org_all))) %>%
+  select(ENSEMBL,SYMBOL) %>% distinct(ENSEMBL,SYMBOL)
 ## the same single gene
 
 ## ..........................................................................
@@ -246,11 +248,11 @@ org_genes2GO %>%
 
 load("/home/ugoebel/CECAD/Pipeline/Git/Heatmaps/heatmaps2GO_test/Reproduce/enrichr_proteasome_mapping.RData")
 ## (this is the group 3 of groups_464, consisting of proteasome genes only)
+
 enrichr_proteasome_mapping <- unlist(enrichr_proteasome_mapping) ## all length 1
 length(enrichr_proteasome_mapping)
 ##[1] 25 
 
-enrichr_proteasome_GOs <- 
 all(enrichr_proteasome_mapping %in% DGE_genes)
 ##[1] TRUE
 load("/home/ugoebel/CECAD/Pipeline/Git/Heatmaps/heatmaps2GO_test/Reproduce/enrichr_proteasome_GOs.RData")
@@ -285,7 +287,7 @@ tmp <- setNames(sapply(GO_genesets[["biomaRt_all_inclusive"]],
                        function(x)intersect(x,g)),
                 GO_genesets$GO_term)
 tmp[sapply(tmp,length)>0]
-##$`GO:0050727`
+##$`GO:0050727` 
 ##[1] "ENSMUSG00000005779"
 
 tmp <- setNames(sapply(GO_genesets[["org_all"]],
@@ -295,6 +297,32 @@ tmp[sapply(tmp,length)>0]
 ##$`GO:0050727`
 ##[1] "ENSMUSG00000005779"
 
+GO_info[["GO:0050727"]]@Term
+##[1] "regulation of inflammatory response"
+
+
+## the single gene is associated with a child of an "our_GO_terms":
+sapply(our_GO_terms,function(x)length(intersect(child_terms[[x]],names(tmp))))
+##GO:0070498 GO:0038061 GO:0033209 GO:0019221 GO:0071357 GO:0050727 GO:0002479 
+##         0          0          0          0          0          1          0 
+##GO:0043312 GO:0071456 GO:0036294 
+##         0          0          0
+## this is different Mon 24 Jan 2022 03:58:46 PM CET:
+## why? what does the line above mean -- names(tmp) *is* our_GO_terms,so 
+## they *should* intersect the inclusive children??
+## result Mon 24 Jan 2022 04:08:46 PM CET :
+sapply(our_GO_terms,function(x)length(intersect(child_terms[[x]],names(tmp))))
+##GO:0070498 GO:0038061 GO:0033209 GO:0019221 GO:0071357 GO:0050727 GO:0002479 
+##1          1          1          3          1          1          1 
+##GO:0043312 GO:0071456 GO:0036294 
+##1          1          2 
+## .. but this simply reflects the relation among our_GO_terms through children?
+
+
+## NOTE that although GO:0050727 is represented in the "proteasome gene set"
+##      of the Enrichr-based heatmap, it is a minor component
+##      (only 4%, which is 1/25=0.04 = 1 out of the 25 genes
+##       -- likely ENSMUSG00000005779).
 
 ## With which terms were the 25 genes actually associated in Enrichr?
 source("functions_enrichr.R")
@@ -480,7 +508,6 @@ tmp[sapply(tmp,length)>0]
 ## [1] "T cell proliferation"
 
 
-
 ## likely the information transfer was via
 ## ENSEMBL from DGE (1)-> symbol (2)-> mapped to (?human) Enrichr symbol 
 ##                  (3)-> associated with GO term in Enrichr database
@@ -532,14 +559,45 @@ indicators <- sapply(colnames(GO_genesets)[-1],
                                             ),
                     simplify=FALSE)
 
-geneset <- "biomaRt_dge_inclusive"
+geneset <- "biomaRt_sig_inclusive"
 m <- as.matrix(indicators[[geneset]][1:(ncol(indicators[[geneset]])-2)])
 nclus <- 8
 clusters <-  cluster_setMembership_vectors(by="hamming", 
                                            v=m,nclus=nclus)
   
-sapply(clusters,function(i) indicators[[geneset]][i,], simplify=FALSE)
+hamming_clusters <- sapply(clusters,
+                           function(i) indicators[[geneset]][i,], 
+                           simplify=FALSE)
+## OK after removing the error in the definition of GO_genes
+## (terms were wrongly sorted for the appended _sig columns)
 
-## not very nice ...
 
 
+km_solutions <- cluster_setMembership_by_kmeans(m,  nruns=10000,
+                                                iter_max=5000, 
+                                                nstart=10,
+                                                nclus=8,verbose=TRUE) # ~4min
+length(km_solutions)
+##[1] 6284
+
+scores <- lapply(km_solutions, 
+                 function(x) mean(sapply(x,
+                                         function(i) 
+                                            hammingLike_matrix_score(
+                                            m[i,,drop=FALSE],zero_penalty=0.01)
+                                         )
+                                  )
+                 )
+km_clusters <- sapply(km_solutions[[which.max(scores)]],
+                      function(i) indicators[[geneset]][i,], simplify=FALSE)
+
+m_org_sig <- as.matrix(indicators[["org_sig"]]
+                       [1:(ncol(indicators[["org_sig"]])-2)])
+nclus <- 8
+clusters_org_sig <-  cluster_setMembership_vectors(by="hamming", 
+                                           v=m_org_sig,nclus=nclus)
+
+hamming_clusters_org_sig <- sapply(clusters_org_sig,
+                                   function(i) indicators[["org_sig"]][i,], 
+                                   simplify=FALSE)
+## this looks much better -- why?

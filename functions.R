@@ -180,11 +180,17 @@ hammingLike_matrix_score <- function(m,exponent=4, zero_penalty=0.01,
         (2*x-1)^y
     }
 
-    combineScores(sapply(colMeans(apply(m, 
-                                  2, ## for each column of input matrix m:
-                                  function(x) x+ (all(x==0) * zero_penalty)) ## if it is a column of shared zeroes,
-                                                                             ## add the zero_penalty
-                                 ), score_colMean) ## Compute (2*[mean of (penalized) column] -1)^(exponent) :
+    if(nrow(m) > 1) {
+      collapse_cols <- colMeans
+    } else {
+      collapse_cols <- function(x) x
+    }
+    
+    combineScores(sapply(collapse_cols(apply(m, 
+                                       2, ## for each column of input matrix m:
+                                       function(x) x+ (all(x==0) * zero_penalty)) ## if it is a column of shared zeroes,
+                                                                                  ## add the zero_penalty
+                                       ), score_colMean) ## Compute (2*[mean of (penalized) column] -1)^(exponent) :
                                                    ## The score is the closer to 1 the closer the colMean
                                                    ## is either to 1 or to 0;
                                                    ## at colMean=0.5 the score is 0;
@@ -227,5 +233,46 @@ cluster_setMembership_by_Hamming <- function(v, exponent=4, zero_penalty=0.01, n
                                ))
     }
     row_clusters
+}
+cluster_setMembership_by_kmeans <- function(v,  
+                                            nstart=1, nruns=500, 
+                                            iter_max=100, 
+                                            nclus=8, 
+                                            min_shared_frac=0.999,
+                                            max_fail_shared=1,
+                                            verbose=FALSE) {
+  v <- as.data.frame(v) ## this will retain the rownames 
+                        ## of the extracted sub-matrices (not really needed) 
+  
+  sol <- sapply(1:nruns,
+                function(n) {
+                  ##browser()
+                  if(verbose) cat(n,"\n")
+                  
+                  i <- kmeans(as.matrix(v),
+                              nclus, nstart=nstart,
+                              iter.max=iter_max)$cluster
+                  clusters  <- tapply(1:length(i),i, 
+                                      function(j) v[j,,drop=FALSE])
+                  
+                  freq <- sapply(clusters,
+                                 function(this_clus) apply(this_clus,
+                                                           2,
+                                                           function(x)sum(x)/
+                                                                   length(x)))
+                  ##browser()
+                  if(sum(!apply(freq,2,function(x)any(x>=min_shared_frac))) 
+                     > max_fail_shared)  { 
+                    ## maximally "max_fail_shared" clusters are allowed to 
+                    ## *not* have at least one fixed term
+                    NULL
+                    
+                  } else {
+                    ##browser()
+                    tapply(1:length(i),i, c)
+                  }
+                },simplify=FALSE)
+  
+  sol[!sapply(sol,is.null)]
 }
 
