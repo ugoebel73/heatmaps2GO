@@ -276,3 +276,133 @@ cluster_setMembership_by_kmeans <- function(v,
   sol[!sapply(sol,is.null)]
 }
 
+## -----------------------------------------------------------------------------
+## Functions for transforming a matrix to be displayed as a heatmap:
+## .............................................................................
+
+collapse_matrix_rows <- function(m,rowsets,merge_function=colMeans) {
+  ## rowsets is a list, 
+  ##   with element value = a vector of rownames or row indices of matrix m
+  ##        element name  = rowname of a new row in m 
+  ##                        formed by collapsing the corresponding rows
+  ## merge_function() is used to collapse a set of rows 
+  ##                  contained in a given "rowsets" entry
+  
+  if(length(rowsets)==0) {
+    return(list(collapsed=NULL,remaining=m))
+    
+  } else if (any(duplicated(names(rowsets)))) {
+    cat('Found duplicated  "rowsets" names-- returning NULL!\n' )
+    return(NULL)
+  } else {
+    if        (all(sapply(rowsets,class)=="character")) {
+      by_name <- TRUE
+    } else if (all(sapply(rowsets,class)=="numeric")) {
+      by_name <- FALSE
+    } else {
+      cat('"rowsets" must be either all "character" or all "numeric"',
+          ' -- returning NULL!\n')
+    }
+    
+    OK  <- ( by_name && 
+              (all(sapply(rowsets,function(s) all(s %in% rownames(m)))))) ||
+           (!by_name && 
+              (all(sapply(rowsets,function(s) all(s %in% (1:nrow(s)))))))
+    if(!OK) {
+      cat('All vector entries of each list element of "rowsets" must either map',
+          ' to rownames or to row indices of matrix m -- returning NULL!\n')
+    }
+  } 
+  collapsed <- t(sapply(rowsets,
+                        function(s) merge_function(m[s,,drop=FALSE])))
+  colnames(collapsed) <- colnames(m)
+  
+  ## handle any remaining, not collapsed rows of m 
+  if(by_name) {
+    i_remains <- which(!(rownames(m) %in% Reduce(union,rowsets)))
+  } else {
+    i_remains <- setdiff(1:nrow(n),Reduce(union,rowsets))
+  }
+  if(length(i_remains)>0) { 
+    r <- m[i_remains,,drop=FALSE]
+    rownames(r) <- rownames(m)[i_remains] 
+    colnames(r) <- colnames(m)
+  } else {
+    r <- NULL
+  }
+  
+  ## return the collapsed and the "remaining", uncollapsed part of the input matrix as separate pieces:
+  list(collapsed=collapsed, remaining=r)
+  
+}
+
+remap_rownames <- function(m, new2old, merge_function=colMeans,
+                           remove_NA_rownames=TRUE ) {
+  ## This function maps the original rownames of matrix m to new rownames.
+  ## Parameter new2old is a tibble with columns "new" and "old", 
+  ## describing the mapping (which is NOT necessarily 1:1).
+  ## 
+  ## The function handles the case where >1 old name maps to the same new name:
+  ## Each such group of "clashing" matrix rows is merged to yield 
+  ## a single new row (using function merge_function()),
+  ## and the original rows are removed.
+  
+  ## --- is.null(new2old) is taken to mean "don't map":
+  if(is.null(new2old)) {
+    return(m)
+  }
+  
+  ## --- First make sure that all rownames of m do appear as "old" names:
+  if(!all(rownames(m) %in% new2old$old)) {
+    cat("** The new2old mapping must cover all rownames of matrix m ! **")
+    return(m)
+  }
+  ## remove any "old" names which are not represented in m
+  new2old <- new2old %>% 
+               filter(old %in% rownames(m)) 
+  
+  
+  ## --- Then do the actual mapping:
+  
+  ## group old names by new name:
+  grp <- tapply(new2old$old, new2old$new, c, 
+                simplify=FALSE)
+  
+  ## collapse groups of rows mapping to a shared new rowname:
+  res <- collapse_matrix_rows(m,
+                              grp[sapply(grp, length) > 1],
+                              merge_function)
+  
+  ## deal with the remaining rows 
+  if(!is.null(res$remaining)) {
+    ## apply the mapping 
+    ## (which is now necessarily 1:1 **except for possible NAs in "new"**) 
+    ## to this part of the matrix:
+    new2old <- new2old %>% filter(old %in% rownames(res$remaining))
+    
+    mp        <- new2old$new
+    names(mp) <- new2old$old
+    
+    if(any(is.na(mp))) {
+      mp[which(is.na(mp))] <- "NA" ## this ASSUMEs that "NA" is not a valid new name!
+    }
+    rownames(res$remaining) <- mp[rownames(res$remaining)] 
+    ## here, rownames with missing "new" names are still NA (not "NA")!
+    
+    if(remove_NA_rownames) {
+      res$remaining <- res$remaining[!is.na(rownames(res$remaining)),]
+    }
+    
+    ## append the 1:1 mapping (with collapsed NAs as group "NA") 
+    ## to the collapsed groups, and return grp, 
+    ## allowing to trace the mapping back in the calling environment:
+    grp <- c(grp[sapply(grp, length) > 1],
+             tapply(names(mp),mp,c))
+    
+  }
+  ## return the collapsed and the original part of the input matrix separately,
+  ## allowing the calling function to handle them separately:
+  return(list(tbl=rbind(res$collapsed,res$remaining),grp=grp))
+  
+}
+

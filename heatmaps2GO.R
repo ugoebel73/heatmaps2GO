@@ -308,8 +308,8 @@ sapply(our_GO_terms,function(x)length(intersect(child_terms[[x]],names(tmp))))
 ##GO:0043312 GO:0071456 GO:0036294 
 ##         0          0          0
 ## this is different Mon 24 Jan 2022 03:58:46 PM CET:
-## why? what does the line above mean -- names(tmp) *is* our_GO_terms,so 
-## they *should* intersect the inclusive children??
+## why? what does the line above mean -- names(tmp) *is* our_GO_terms, so 
+## they *should* always intersect the inclusive children??
 ## result Mon 24 Jan 2022 04:08:46 PM CET :
 sapply(our_GO_terms,function(x)length(intersect(child_terms[[x]],names(tmp))))
 ##GO:0070498 GO:0038061 GO:0033209 GO:0019221 GO:0071357 GO:0050727 GO:0002479 
@@ -572,6 +572,28 @@ hamming_clusters <- sapply(clusters,
 ## (terms were wrongly sorted for the appended _sig columns)
 
 
+clusters6 <-  cluster_setMembership_vectors(by="hamming", 
+                                            v=m,nclus=6)
+
+hamming_clusters6 <- sapply(clusters6,
+                            function(i) indicators[[geneset]][i,], 
+                            simplify=FALSE)
+## worse
+
+clusters7 <-  cluster_setMembership_vectors(by="hamming", 
+                                            v=m,nclus=7)
+
+hamming_clusters7 <- sapply(clusters7,
+                            function(i) indicators[[geneset]][i,], 
+                            simplify=FALSE)
+
+
+clusters5 <-  cluster_setMembership_vectors(by="hamming", 
+                                            v=m,nclus=5)
+
+hamming_clusters5 <- sapply(clusters5,
+                            function(i) indicators[[geneset]][i,], 
+                            simplify=FALSE)
 
 km_solutions <- cluster_setMembership_by_kmeans(m,  nruns=10000,
                                                 iter_max=5000, 
@@ -600,4 +622,50 @@ clusters_org_sig <-  cluster_setMembership_vectors(by="hamming",
 hamming_clusters_org_sig <- sapply(clusters_org_sig,
                                    function(i) indicators[["org_sig"]][i,], 
                                    simplify=FALSE)
-## this looks much better -- why?
+## --------------------------------------------------------------------------
+## --------------------------------------------------------------------------
+## Make matrix to be displayed as a heatmap:
+
+## Column 4 =ensembl_geneid [=ENSEMBL], column 4 =geneid[=SYMBOL],
+## and the voom-normalized counts [columns 7-..] are the same for all
+## pairwise comparisons (however the row order does depend on the comparison).
+## -> can arbitrarily use comparison [[1]] to extract counts and their IDs:
+
+voom <- as.matrix(DGE_results[[1]][,-(1:6)]) 
+rownames(voom) <- DGE_results[[1]]$ensembl_geneid
+
+## My previous approach was: map original Ensembl IDs to gene symbols,
+## then extract genes in significantly enriched GO terms by symbol.
+## This looses information in the mapping (see "voom_mapping"), but was
+## unavoidable with Enrichr as Enrichr GO databases contain only gene symbols.
+tmp <- remap_rownames(voom,  
+                      new2old = DGE_results[[1]] %>% 
+                                   select(ensembl_geneid,geneid) %>% 
+                                   transmute(old=ensembl_geneid,new=geneid), 
+                      merge_function=colMeans) ## voom is ~log2(CPM)
+                                               ## colSums() makes no sense!
+voom_mapped <- tmp$tbl
+voom_mapping <- tmp$grp
+
+## With org.Mm.eg.db or biomaRt, I have an Ensembl ID <-> GO mapping.
+## However in the clusterProfiler ORA and GSEA results, I still report only
+## gene symbols (I could have choosen otherwise!). 
+
+## Because my GO gene sets here are Ensembl-based, I need to map the 
+## gene sets to symbols, too:
+
+## find the GO geneset of each symbol's Ensembl IDs:
+tmp <- sapply(voom_mapping,
+              function(x) names(which(sapply(GO_genesets$org_dge, 
+                                             function(y) any(x %in% y)))),
+              simplify=FALSE)
+
+GO_symbolsets <- tibble(SYMBOL=names(tmp),GO_term=tmp) %>% 
+                    tidyr::unnest(GO_term) %>% ## deletes symbols with empty GOs
+                    group_by(GO_term) %>% 
+                    summarize (symbols=list(SYMBOL))
+
+## see https://dcl-prog.stanford.edu/list-columns.html#creating 
+
+## --------------------------------------------------------------------------
+
