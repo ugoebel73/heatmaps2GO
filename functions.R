@@ -276,6 +276,33 @@ cluster_setMembership_by_kmeans <- function(v,
   sol[!sapply(sol,is.null)]
 }
 
+groups_from_vector_clustering <- function(clustering, indicators) {
+  
+  groups <- sapply(clustering,
+                   function(i) Reduce(union,
+                                      indicators[["set"]][i]))
+                  
+  
+  names(groups) <- sapply(clustering,
+                          function(i) {
+                            setSizes <- indicators[i,] %>% pull(setSize)
+                            
+                            m <- as.matrix(indicators[i,] %>% 
+                                               select(-c(set,setSize))
+                                           ) * setSizes
+                           
+                            relSizes <- colSums(m)/sum(setSizes)
+                            
+                            n <- sort(relSizes[ which(relSizes>0)],
+                                      decreasing=TRUE)    
+                            paste(names(n),":",round(n*100,digits=0),"%",
+                                  sep="",collapse=", ")
+                            
+                          })
+
+  
+  groups
+}
 ## -----------------------------------------------------------------------------
 ## Functions for transforming a matrix to be displayed as a heatmap:
 ## .............................................................................
@@ -406,3 +433,39 @@ remap_rownames <- function(m, new2old, merge_function=colMeans,
   
 }
 
+## -----------------------------------------------------------------------------
+## Functions for re-mapping (gene) IDs:
+map_genesets <- function(genesets, mapping,
+                         id_col="GO_term", set_col="SYMBOL") {
+  
+  ## genesets: a list of gene sets,
+  ##           with element names=setnames, e.g., GO terms
+  ## mapping: a mapping from the original ID space of genesets (e.g., Ensembl)
+  ##          to a new space (e.g., gene symbol)
+  ##          "mapping" is a list, with element names = IDs in the new space,
+  ##                                    elements = vectors of associated new IDs
+  ## return value: a tibble with column "id_col" =the original gene set names
+  ##                                    "set_col"=the mapped associated gene sets
+  ##                                    (a list column)
+  
+  reverse_map <-
+    sapply(mapping,
+           function(x) names(which(sapply(genesets,
+                                          function(y) any(x %in% y)))),
+           simplify=FALSE)
+  
+  mapped <- tibble(A=names(reverse_map),B=reverse_map) %>% 
+    tidyr::unnest(B) %>% ## deletes IDs which are not in "genesets"
+    group_by(B)      %>% 
+    summarize (A=list(A))
+  
+  ## un-do the ordering by unnest:
+  mapped <- mapped[order(order(names(genesets))),]
+  
+  col_map <- setNames(c(set_col,id_col),c("A","B"))
+  colnames(mapped) <- col_map[colnames(mapped)]
+  
+  mapped
+  
+}
+## .............................................................................

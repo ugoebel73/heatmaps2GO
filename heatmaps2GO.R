@@ -50,6 +50,18 @@ path <- "DATA/GO_evidence_codes.tsv"
 GO_evidence <- read.csv(path,sep="\t",comment.char="#")
 
 ## --------------------------------------------------------------------------
+## For comparison: the Enrichr GO databases I have used in previous analyses:
+source("functions_enrichr.R")
+Enrichr_dbs <- sapply(read_Enrichr_dbs(Enrichr_base="DATA"),
+                      function(x) {
+                        y <- x$genes
+                        names(y) <- extractCapturedSubstrings(
+                          pattern="\\((GO:\\d+)\\)$",
+                          string=names(y))    
+                        y 
+                      })
+## --------------------------------------------------------------------------
+
 ## GO terms for which we want to draw heatmaps:
 our_GO_terms <- read.csv("GO_terms.csv",comment.char="#")[,"GO_term"]
 
@@ -219,7 +231,6 @@ for(tag in c("all","dge","sig")) {
                })
 }
 
-
 ## ..........................................................................
 ## Where are the proteasome-related genes that are in the Enrichr heatmaps,
 ## but no longer in the org.Mm.eg.db-based ones?
@@ -281,8 +292,8 @@ g_symbols <- biomaRt_v102_genes2GO %>% filter(ENSEMBL %in% g) %>%
 ##[17] "Psmb8"  "Psma6"  "Uba52"  "Psmd3"  "Psmc1"  "Psmc2"  "Psma2"  "Psmb10"
 ##[25] "Psmb1" 
 
-## But they are not associated with our_GO_terms in biomaRt or in org.Mm.eg.db,
-## except for one gene:
+## But they are not associated with our_GO_terms (or their children) 
+## in biomaRt or in org.Mm.eg.db, except for one gene:
 tmp <- setNames(sapply(GO_genesets[["biomaRt_all_inclusive"]],
                        function(x)intersect(x,g)),
                 GO_genesets$GO_term)
@@ -301,39 +312,12 @@ GO_info[["GO:0050727"]]@Term
 ##[1] "regulation of inflammatory response"
 
 
-## the single gene is associated with a child of an "our_GO_terms":
-sapply(our_GO_terms,function(x)length(intersect(child_terms[[x]],names(tmp))))
-##GO:0070498 GO:0038061 GO:0033209 GO:0019221 GO:0071357 GO:0050727 GO:0002479 
-##         0          0          0          0          0          1          0 
-##GO:0043312 GO:0071456 GO:0036294 
-##         0          0          0
-## this is different Mon 24 Jan 2022 03:58:46 PM CET:
-## why? what does the line above mean -- names(tmp) *is* our_GO_terms, so 
-## they *should* always intersect the inclusive children??
-## result Mon 24 Jan 2022 04:08:46 PM CET :
-sapply(our_GO_terms,function(x)length(intersect(child_terms[[x]],names(tmp))))
-##GO:0070498 GO:0038061 GO:0033209 GO:0019221 GO:0071357 GO:0050727 GO:0002479 
-##1          1          1          3          1          1          1 
-##GO:0043312 GO:0071456 GO:0036294 
-##1          1          2 
-## .. but this simply reflects the relation among our_GO_terms through children?
-
-
 ## NOTE that although GO:0050727 is represented in the "proteasome gene set"
 ##      of the Enrichr-based heatmap, it is a minor component
 ##      (only 4%, which is 1/25=0.04 = 1 out of the 25 genes
 ##       -- likely ENSMUSG00000005779).
 
-## With which terms were the 25 genes actually associated in Enrichr?
-source("functions_enrichr.R")
-Enrichr_dbs <- sapply(read_Enrichr_dbs(Enrichr_base="DATA"),
-                      function(x) {
-                        y <- x$genes
-                        names(y) <- extractCapturedSubstrings(
-                                       pattern="\\((GO:\\d+)\\)$",
-                                       string=names(y))    
-                        y 
-                      })
+## With which GO terms were the 25 genes associated in the Enrichr GO database?
 sapply(toupper(g_symbols),function(this_g)  
   names(which(
     sapply(Enrichr_dbs[["GO_Biological_Process_2018"]][our_GO_terms],
@@ -391,7 +375,7 @@ sapply(toupper(g_symbols),function(this_g)
 ## $PSMB1
 ## [1] "GO:0070498" "GO:0038061" "GO:0033209" "GO:0019221" "GO:0002479" "GO:0043312" "GO:0071456"                        
 
-
+## With which GO terms are the 25 genes associated in the biomaRt database?
 t <- biomaRt_v102_genes2GO %>% filter(ENSEMBL %in% g) %>%
                                distinct(GO_term) %>% pull(GO_term)
 length(unique(t))
@@ -425,15 +409,14 @@ sapply(GO_synonyms[intersect(t, names(GO_synonyms))],
 #FALSE 
 
 ## these are the biological themes 
-## with which the 25 genes are associated in GO.db:
-
-##sapply(t,function(x)GO_info[[x]]@Term)
+## with which the 25 genes are associated in GO.db
+## (BP ontology, because our_GO_terms are all BP):
 tmp <- sapply(t,
               function(x) {
                 if (GO_info[[x]]@Ontology=="BP") GO_info[[x]]@Term
                 else                             NULL
              })
-tmp[sapply(tmp,length)>0]
+tmp <- tmp[sapply(tmp,length)>0]
 ## $`GO:0030163`
 ## [1] "protein catabolic process"
 ## $`GO:1901800`
@@ -507,46 +490,46 @@ tmp[sapply(tmp,length)>0]
 ## $`GO:0042098`
 ## [1] "T cell proliferation"
 
+sapply(our_GO_terms,function(x)length(intersect(child_terms[[x]],names(tmp))))
+##GO:0070498 GO:0038061 GO:0033209 GO:0019221 GO:0071357 GO:0050727 GO:0002479 
+##         0          0          0          0          0          1          0 
+##GO:0043312 GO:0071456 GO:0036294 
+##         0          0          0 
+## None except one of the terms is a child of our_GO_terms in GO.db,
+## where the sole matching term is in our_GO_terms itself and 
+## contains the sole matching gene (see above).
 
-## likely the information transfer was via
+## Likely the information transfer was via
 ## ENSEMBL from DGE (1)-> symbol (2)-> mapped to (?human) Enrichr symbol 
 ##                  (3)-> associated with GO term in Enrichr database
 ##                  (4)-> back-associated with original Ensembl ID
 ##                        (implicitly by matrix row of origin)
 ## after (1)->, the information on the original Ensembl ID is lost;
 ## GO terms from other genes which happen to map to an (Enrichr flavor!) symbol 
-## will be transferred to the Ensembl ID.
+## will be transferred back to the Ensembl ID.
 
 
 ## see also GO.db.pdf under GOTERM:
-##All the obsolete GO terms are under the nodes "obsolete molecular function" (GO:0008369), "ob-
-##solete cellular component" (GO id GO:0008370), and "obsolete biological process" (GO:0008371).
-##Each of these GO identifiers has a group of GO identifiers as their direct children with GO terms
-##that were defined by GO but are deprecated in the current build. These deprecated GO terms were
-##appended by "(obsolete)" when the data package was built.
-##Mappings were based on data provided by: Gene Ontology http://current.geneontology.org/ontology/go-
-##  basic.obo With a date stamp from the source of: 2021-09-01
-## EXPLORE THIS <<<------------
-
-
-## copied from ws02:/data/public/ugoebel/Analysis/Test_Ensembl_versions
-## (should be 102 through biomaRt):
-load("DATA/biomart_descriptors_102.RData") ## varname: descriptors102
-
-length(unique(descriptors_102$ensembl_gene_id))
-##[1] 56305
-length(unique(biomaRt_v102_genes2GO$ENSEMBL))
-##[1] 22302 ## much less .. like due to removed empty GO terms:
-
-tmp <- biomaRt::getBM(attributes = c("ensembl_gene_id",
-                                     "external_gene_name",
-                                     "go_id",
-                                     "go_linkage_type"),
-                      mart=mart102)
-length(unique(tmp$ensembl_gene_id))
-##[1] 56305
-length(unique(tmp$ensembl_gene_id[tmp$go_id!=""]))
-##[1] 22303 ## OK
+##All the obsolete GO terms are under the nodes 
+## "obsolete molecular function" (GO:0008369), 
+## "obsolete cellular component" (GO:0008370), and 
+## "obsolete biological process" (GO:0008371) .. " .. NOT in my version?
+## But:
+obsolete <- names(as.list(GO.db::GOOBSOLETE))
+length(obsolete)
+##[1] 3499
+table(names(Enrichr_dbs$GO_Biological_Process_2018) %in% obsolete)
+##FALSE  TRUE 
+## 5045    58 
+## *not* a sizeable number 
+## --------------------------------------------------------------------------
+## What about biomaRt?
+table(unique(biomaRt_v102_genes2GO %>% 
+               filter(Ontology=="BP") %>% 
+               pull(GO_term))  %in% obsolete)
+## FALSE 
+## 12447
+## note that these are more terms than in Enrichr
 
 ## --------------------------------------------------------------------------
 ## --------------------------------------------------------------------------
@@ -602,7 +585,7 @@ km_solutions <- cluster_setMembership_by_kmeans(m,  nruns=10000,
 length(km_solutions)
 ##[1] 6284
 
-scores <- lapply(km_solutions, 
+scores <- sapply(km_solutions, 
                  function(x) mean(sapply(x,
                                          function(i) 
                                             hammingLike_matrix_score(
@@ -610,8 +593,15 @@ scores <- lapply(km_solutions,
                                          )
                                   )
                  )
+minsz <- sapply(km_solutions,function(x) min(sapply(x,length)))
+
 km_clusters <- sapply(km_solutions[[which.max(scores)]],
                       function(i) indicators[[geneset]][i,], simplify=FALSE)
+km_clusters2 <- sapply(km_solutions[minsz>1][[which.max(scores[minsz>1])]],
+                      function(i) indicators[[geneset]][i,], simplify=FALSE)
+
+
+
 
 m_org_sig <- as.matrix(indicators[["org_sig"]]
                        [1:(ncol(indicators[["org_sig"]])-2)])
@@ -622,6 +612,45 @@ clusters_org_sig <-  cluster_setMembership_vectors(by="hamming",
 hamming_clusters_org_sig <- sapply(clusters_org_sig,
                                    function(i) indicators[["org_sig"]][i,], 
                                    simplify=FALSE)
+nclus <- 7
+clusters7_org_sig <-  cluster_setMembership_vectors(by="hamming", 
+                                                   v=m_org_sig,nclus=nclus)
+
+hamming_clusters7_org_sig <- sapply(clusters7_org_sig,
+                                   function(i) indicators[["org_sig"]][i,], 
+                                   simplify=FALSE)
+
+nclus <- 6
+clusters6_org_sig <-  cluster_setMembership_vectors(by="hamming", 
+                                                    v=m_org_sig,nclus=nclus)
+
+hamming_clusters6_org_sig <- sapply(clusters6_org_sig,
+                                    function(i) indicators[["org_sig"]][i,], 
+                                    simplify=FALSE)
+
+km_solutions_org_sig <- cluster_setMembership_by_kmeans(m_org_sig,  nruns=10000,
+                                                iter_max=5000, 
+                                                nstart=10,
+                                                nclus=8,verbose=TRUE) # ~4min
+length(km_solutions_org_sig)
+##[1] 4841
+
+scores_org_sig <- sapply(km_solutions_org_sig, 
+    function(x) mean(sapply(x,
+                            function(i) 
+                              hammingLike_matrix_score(
+                                    m_org_sig[i,,drop=FALSE],zero_penalty=0.01)
+                           )))
+
+minsz_org_sig <- sapply(km_solutions_org_sig,
+                        function(x) min(sapply(x,length)))
+
+km_clusters_org_sig <- sapply(km_solutions_org_sig[[which.max(scores_org_sig)]],
+                       function(i) indicators[["org_sig"]][i,], simplify=FALSE)
+km_clusters2_org_sig <- sapply(km_solutions_org_sig[minsz_org_sig>1]
+                               [[which.max(scores_org_sig[minsz_org_sig>1])]],
+                       function(i) indicators[["org_sig"]][i,], simplify=FALSE)
+## sort of OK
 ## --------------------------------------------------------------------------
 ## --------------------------------------------------------------------------
 ## Make matrix to be displayed as a heatmap:
@@ -664,6 +693,7 @@ GO_symbolsets <- tibble(SYMBOL=names(tmp),GO_term=tmp) %>%
                     tidyr::unnest(GO_term) %>% ## deletes symbols with empty GOs
                     group_by(GO_term) %>% 
                     summarize (symbols=list(SYMBOL))
+                 [order(order(our_GO_terms)),] ## un-do the ordering by unnest
 
 ## see https://dcl-prog.stanford.edu/list-columns.html#creating 
 
