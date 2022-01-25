@@ -562,6 +562,8 @@ draw_heatmap  <- function(mtrx,
                 
                 row_split=row_split,
                 cluster_rows=FALSE,
+                cluster_row_slices=FALSE,
+                
                 row_names_side="right",
                 row_names_gp = gpar(fontsize = rownames_fontsize),
                 row_title=NULL,
@@ -572,7 +574,7 @@ draw_heatmap  <- function(mtrx,
                 column_title=NULL,
                 
                 cluster_columns=FALSE,
-                
+                cluster_column_slices=FALSE,
                 column_labels=column_labels,
                 
                 show_column_names=show_column_names,

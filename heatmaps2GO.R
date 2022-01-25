@@ -759,7 +759,7 @@ km_subfigs <- list(c(2:6),c(1))
 
 ## --------------------------------------------------------------------------
 ## Draw the heatmap(s):
-subfig_index <- 1
+subfig_index <- 2
 tmp <- stack_submatrices(voom_mapped, 
                          setNames(km$SYMBOL[km_subfigs[[subfig_index]]],
                                   km$GO_group[km_subfigs[[subfig_index]]])
@@ -779,12 +779,14 @@ tmp <- sapply(km$GO_group[km_subfigs[[subfig_index]]],
 
 text_tags <-lapply(tmp,function(x) sapply(GO_info[x],function(y) y@Term))
 
-conditions <- extractCapturedSubstrings("\\.([^.]+)$",
-                                        colnames(m1))
 condition_labels <- c(cre="control",
                       iko="aPKC",
                       p53="p53",
                       dko="dko")
+conditions <- factor(extractCapturedSubstrings("\\.([^.]+)$",
+                                               colnames(m1)),
+                     levels=names(condition_labels))
+
 draw_heatmap(m1,
              condition_colors=1:length(nice_colnames),## fill colors 
                                                       ## -- use standard colors
@@ -792,6 +794,8 @@ draw_heatmap(m1,
              column_split=conditions,
              row_split=r1,
              tags=text_tags,
-             outfile=paste0("testout_",subfig_index".pdf")
+             column_labels=colnames(m1),
+             show_column_names=TRUE,
+             outfile=NULL) ##paste0("testout_",subfig_index,".pdf"))
              
 
