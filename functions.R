@@ -469,3 +469,120 @@ map_genesets <- function(genesets, mapping,
   
 }
 ## .............................................................................
+## -----------------------------------------------------------------------------
+## Functions for drawing heatmaps:
+## pheatmaps code, from https://www.biostars.org/p/223532/
+scale_rows  <-  function(x){
+  m  <-  apply(x, 1, mean, na.rm = TRUE)
+  s  <-  apply(x, 1, sd, na.rm = TRUE)
+  return((x - m) / s)
+}
+
+scale_mat  <-  function(mat, scale){
+  if(!(scale %in% c("none", "row"))){
+    stop("scale argument shoud take values: 'none' or 'row'")
+  }
+  mat  <-  switch(scale, none = mat, 
+                  row = scale_rows(mat), 
+                  column = t(scale_rows(t(mat))))
+  return(mat)
+}
+
+stack_submatrices <-function(mtrx,
+                             rowsets,
+                             scaling="row") {
+  submatrices <- sapply(rowsets,
+                        function(n) {
+                          m <- scale_mat(mtrx[n,],
+                                         scale=scaling)
+                          ## submatrices are row-clustered:
+                          m[hclust(dist(m))$order,] 
+                        }, simplify=FALSE)
+  
+  l <- sapply(submatrices,nrow)
+  row_split_indicator <- factor(Reduce(c,sapply(names(l),
+                                                function(n)rep(n,l[n]))),
+                                levels=names(l))
+  
+  list(mat=Reduce(rbind, submatrices),
+       grp=row_split_indicator)
+  
+}
+
+library("ComplexHeatmap")
+draw_heatmap  <- function(mtrx,
+                          condition_colors,
+                          condition_labels=names(condition_colors),
+                          row_split=NULL,
+                          tags=NULL, ## "text balloons" associated 
+                                     ##  with submatrices
+                          column_split=NULL,
+                          column_labels=NULL,
+                          show_column_names=FALSE,
+                          rownames_fontsize=5,
+                          outfile=NULL) {
+
+  column_annot <- 
+      HeatmapAnnotation(foo = anno_block(gp = gpar(fill = condition_colors,
+                                                   col=NA),
+                        labels = condition_labels, 
+                        labels_gp = gpar(col = "white", fontsize = 13)))
+  
+  if(!is.null(row_split)) { ## matrix is stacked
+      if(is.null(tags) || 
+         !is.factor(row_split) ||
+         (length(tags) != nlevels(row_split))) {
+           
+              stop("Draw_heatmap needs text tags for labelling split rowsets!")
+      }
+      names(tags) <- levels(row_split)
+  
+      tag_widths  <- sapply(tags,max_text_width,
+                            ##gp = gpar(fontsize=rownames_fontsize[fig_index]),
+                            simplify=FALSE)
+      tag_heights <- sapply(tags,max_text_height,
+                            ##gp = gpar(fontsize=rownames_fontsize[fig_index]),
+                            simplify=FALSE)
+      panel_fun = function(index,nm) {
+        pushViewport(viewport())
+        grid.rect()
+        grid.text(paste(tags[[nm]],collapse="\n"))
+        popViewport()
+      }
+      zoom_anno <- anno_link(align_to = row_split, 
+                             which = "row", panel_fun = panel_fun, 
+                             size = unit(3, "cm"), 
+                             gap = unit(1, "cm"), 
+                             width = unit(8, "cm"),
+                             side="left")
+  }
+  ht <- Heatmap(mtrx,
+                name="z-score",
+                col=colorRampPalette(c("darkblue", "white", "red2"))(100),
+                
+                row_split=row_split,
+                cluster_rows=FALSE,
+                row_names_side="right",
+                row_names_gp = gpar(fontsize = rownames_fontsize),
+                row_title=NULL,
+                left_annotation=rowAnnotation(tags=zoom_anno),
+                
+                column_split=column_split,
+                column_gap = unit(0, "mm"),
+                column_title=NULL,
+                
+                cluster_columns=FALSE,
+                
+                column_labels=column_labels,
+                
+                show_column_names=show_column_names,
+                column_names_side="bottom",
+                top_annotation=column_annot)
+  p <- draw(ht)
+  print(p)
+  if(!is.null(outfile)) {
+    dev.copy2pdf(file=outfile)
+  }
+}
+
+

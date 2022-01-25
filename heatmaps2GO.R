@@ -684,18 +684,114 @@ voom_mapping <- tmp$grp
 ## gene sets to symbols, too:
 
 ## find the GO geneset of each symbol's Ensembl IDs:
-tmp <- sapply(voom_mapping,
-              function(x) names(which(sapply(GO_genesets$org_dge, 
-                                             function(y) any(x %in% y)))),
-              simplify=FALSE)
+GO_symbolsets <- map_genesets(genesets=GO_genesets$org_dge,
+                              mapping=voom_mapping)
 
-GO_symbolsets <- tibble(SYMBOL=names(tmp),GO_term=tmp) %>% 
-                    tidyr::unnest(GO_term) %>% ## deletes symbols with empty GOs
-                    group_by(GO_term) %>% 
-                    summarize (symbols=list(SYMBOL))
-                 [order(order(our_GO_terms)),] ## un-do the ordering by unnest
 
-## see https://dcl-prog.stanford.edu/list-columns.html#creating 
+## for the clusterings (here, kmeans on significantly regulated genes,
+##                            with Ensembl<->GO relation from org.Mm.eg.db):
+i   <- which(minsz_org_sig>1) ## don't allow singleton vector clusters
+tmp <- km_solutions_org_sig[i][[which.max(scores_org_sig[i])]]
+km_org_sig_genesets <- groups_from_vector_clustering(tmp,
+                                                     indicators[["org_sig"]])
+                                                     
+
+km_org_sig_symbolsets <- map_genesets(genesets= km_org_sig_genesets,
+                                      mapping=voom_mapping,
+                                      id_col="GO_group")
+
 
 ## --------------------------------------------------------------------------
+## Can I partition the new clustering similar to the Enrichr-based old one?
+load("DATA/order_464.RData")
+subfig_terms <- sapply(c(1,2),
+                       function(i) {
+                          tmp <- order_464$GOterms[order_464$subfigure==i]
+                          x <- Reduce(union,
+                                      sapply(tmp,
+                                          extractCapturedSubstrings,
+                                                 ##pattern="(GO\\.\\d+):100\\%",
+                                                 pattern="(GO\\.\\d+)",
+                                                 global_search=TRUE
+                                          ))
+                          gsub("\\.",":",x) ## GO terms in input 
+                                            ## had "." instead of ":"
+                        },simplify=FALSE)
+all(our_GO_terms %in% subfig_terms[[2]])
+##[1] TRUE
+sapply(GO_info[sub("\\.",":",subfig_terms[[1]])],function(x)x@Term)
+## GO:0070498 
+## "interleukin-1-mediated signaling pathway" 
+## GO:0019221 
+## "cytokine-mediated signaling pathway" 
+## GO:0050727 
+## "regulation of inflammatory response" 
+## GO:0038061 
+## "NIK/NF-kappaB signaling" 
+## GO:0033209 
+## "tumor necrosis factor-mediated signaling pathway" 
+## GO:0071357 
+## "cellular response to type I interferon" 
+## GO:0043312 
+## "neutrophil degranulation" 
+
+sapply(GO_info[sub("\\.",":",setdiff(subfig_terms[[2]],subfig_terms[[1]]))],
+       function(x)x@Term)
+## GO:0071456 
+## "cellular response to hypoxia" 
+## GO:0002479 
+## "antigen processing and presentation of exogenous peptide antigen 
+##                                    via MHC class I, TAP-dependent" 
+## GO:0036294 
+## "cellular response to decreased oxygen levels" 
+
+## define for now:
+my_subfig_terms <- subfig_terms[[1]]
+my_subfig_terms <- setdiff(subfig_terms[[2]],subfig_terms[[1]])
+## (GO:0002479 should go from subfig2)
+
+km_org_sig_subfigs <- list(setdiff(1:nrow(km_org_sig_symbolsets),c(2,3)),
+                           c(2,3))
+
+## a reduced dataset with a short name for testing:
+km <-  km_org_sig_symbolsets[-c(1,3),]
+km_subfigs <- list(c(2:6),c(1))
+
+## --------------------------------------------------------------------------
+## Draw the heatmap(s):
+subfig_index <- 1
+tmp <- stack_submatrices(voom_mapped, 
+                         setNames(km$SYMBOL[km_subfigs[[subfig_index]]],
+                                  km$GO_group[km_subfigs[[subfig_index]]])
+                         )
+m1 <- tmp$mat
+r1 <- tmp$grp
+
+tmp <- sapply(km$GO_group[km_subfigs[[subfig_index]]],
+              function(x) sapply(extractCapturedSubstrings(x,
+                                                    pattern="(GO\\.\\d+):",
+                                                    global_search=TRUE),
+                                 sub,
+                                 pattern="\\.",
+                                 replacement=":", USE.NAMES=FALSE),
+              simplify=FALSE)
+
+
+text_tags <-lapply(tmp,function(x) sapply(GO_info[x],function(y) y@Term))
+
+conditions <- extractCapturedSubstrings("\\.([^.]+)$",
+                                        colnames(m1))
+condition_labels <- c(cre="control",
+                      iko="aPKC",
+                      p53="p53",
+                      dko="dko")
+draw_heatmap(m1,
+             condition_colors=1:length(nice_colnames),## fill colors 
+                                                      ## -- use standard colors
+             condition_labels=condition_labels,   
+             column_split=conditions,
+             row_split=r1,
+             tags=text_tags,
+             outfile=paste0("testout_",subfig_index".pdf")
+             
 
