@@ -538,10 +538,10 @@ draw_heatmap  <- function(mtrx,
       names(tags) <- levels(row_split)
   
       tag_widths  <- sapply(tags,max_text_width,
-                            ##gp = gpar(fontsize=rownames_fontsize[fig_index]),
+                            ##gp = gpar(fontsize=rownames_fontsize),
                             simplify=FALSE)
       tag_heights <- sapply(tags,max_text_height,
-                            ##gp = gpar(fontsize=rownames_fontsize[fig_index]),
+                            ##gp = gpar(fontsize=rownames_fontsize),
                             simplify=FALSE)
       panel_fun = function(index,nm) {
         pushViewport(viewport())
