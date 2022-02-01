@@ -3,6 +3,7 @@ library(org.Mm.eg.db)
 library(dplyr)
 
 source("functions.R")
+source("functions_IDversions.R")
 
 org_name <- "Mus musculus"
 ensembl_version <- 102
@@ -76,6 +77,32 @@ DGE_results <- sapply(readxl::excel_sheets(path),
 ## the v100/102 Ensembl IDs actually used in the DGE analysis:
 DGE_genes <- DGE_results[[1]]$ensembl_geneid ## same for all comparisons 
                                              ## -> use [[1]]
+## --------------------------------------------------------------------------
+## map DGE_genes to Ensembl v103, which was current on 2021-Apr13, 
+## the ENSOURCEDATE of org.Mm.eg.db 3.14.0
+ensembl_IDmapper_results_Jan31_2022 <- 
+  "./DATA/KLjMWDn3CtXEFwcB-7995102.idmapper.txt" ## for input=DGE_genes,
+                                                 ## run by hand
+
+problematic_IDs_v103 <- 
+  map_Ensembl_versions_from_IDMapper_output(ensembl_IDmapper_results_Jan31_2022,
+                                            target_release <- "103")
+## "retired" IDs should be discarded,
+## IDs with a "current_switch" can be mapped to the new, current ID,
+## but for the "rest" the situation is less clear.
+## Brute force solution here: check whether they do occur in the v103 GTF file:
+## ..........................................................................
+v103 <- rtracklayer::readGFF("./DATA/Mus_musculus.GRCm39.103.gtf", 
+                             version=2)
+any(problematic_IDs_v103$rest %in% v103$gene_id)
+##[1] FALSE
+## --> discard these, too (altogether 194 genes of 18143, =~ 1%)
+## ..........................................................................
+DGE_genes_v103 <- setdiff(DGE_genes,
+                                union(problematic_IDs_v103$retired,
+                                      problematic_IDs_v103$rest))
+switchedID <- DGE_genes_v103 %in% names(problematic_IDs_v103$current_switch)
+############ HIER
 ## --------------------------------------------------------------------------
 ## significantly regulated  v100/102 Ensembl IDs:
 minAbsLFC <- log2(1.5) ## that is, abs(FoldChange)>=1.5 ##

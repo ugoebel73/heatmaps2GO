@@ -81,8 +81,7 @@ problematic_IDs  <- function(mapping=mappings[!is.na(mappings)],
 
 
 map_Ensembl_versions_from_IDMapper_output <- function(IDMapper_output,
-                                                      IDs2map=readLines("../../DATA/DGE_genes.in"),
-                                                      target_release <- "105") {
+                                                      target_release="105") {
     ## parse an output file created by and downloaded from
     ## https://www.ensembl.org/Mus_musculus/Tools/IDMapper
     ## (or the equivalent for another species)
@@ -96,7 +95,7 @@ map_Ensembl_versions_from_IDMapper_output <- function(IDMapper_output,
     cols <- strsplit(header,",\\s*")[[1]]
     mappings <- sapply(1:length(from),
                        function(i) {
-                           cat(i,"\n")
+                           ##cat(i,"\n")
                            this_l <-  strsplit(setdiff(l[from[i]:to[i]],""),",\\s*")
                            if        (length(this_l)==0) {
                                return(NA) ## was: NULL
@@ -133,8 +132,10 @@ map_Ensembl_versions_from_IDMapper_output <- function(IDMapper_output,
     ## Luckily they are (at least in v103 and v105, others not checked) the only genes with source=="RefSeq",
     ## so they are easy to identify.
     ## Extract them here ...
-    mitoIDs <- refseq_IDs_from_EnsemblGTF(ensembl_GTF_file="~/CECAD/Pipeline/Bioc_annotation/Ensembl103/Mus_musculus.GRCm39.103.gtf")
+    fn <-"~/CECAD/Pipeline/Bioc_annotation/Ensembl103/Mus_musculus.GRCm39.103.gtf"
+    mitoIDs <- refseq_IDs_from_EnsemblGTF(ensembl_GTF_file=fn)$refseqIDs
 
+   
     ## .. and then pass them to problematic_IDs, which returns IDs which have been retired, have no entries in newer
     ## releases, or have been assigned a new ID in the target release:
     problematic_IDs(mapping=mappings[!is.na(mappings)],
