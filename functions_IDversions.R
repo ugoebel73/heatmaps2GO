@@ -1,91 +1,42 @@
-## parsing
-## sais:~/CECAD/Niessen/Project_Persa/Analysis/NewData_opersa/SignatureSearch/MSigDB/GdqrLddoe51HQaM8-7836507.idmapper.txt
-## ==
-## ugoebel-X570-AORUS-ELITE:~/Projects/Niessen/Project_Persa/SignatureSearch/MSigDB/November2021/GdqrLddoe51HQaM8-7836507.idmapper.txt
-## (R-4.1.0)
-
-
-## produced by https://www.ensembl.org/Mus_musculus/Tools/IDMapper/Results?tl=GdqrLddoe51HQaM8-7836507
-## ID History Converter results
-## Job details
-## Job summary
-## ID mapping of ids100.txt
-## Species Mouse (Mus musculus)
-## Assembly GRCm39
-
-source("~/CECAD/Programming/Sharable_code/General/general_functions.R")
-refseq_IDs_from_EnsemblGTF <- function(ensembl_GTF_file="~/CECAD/Pipeline/Bioc_annotation/Ensembl103/Mus_musculus.GRCm39.103.gtf") {
-    v <- extractCapturedSubstrings("(?:^|/)([^_/]+_[^_/]+)\\.(GRCm\\d+)\\.(\\d+)\\.",
-                                   ensembl_GTF_file)
-    if(any(sapply(v,length)==0)){
-        stop("Expecting an Ensembl GTF file name!")
-    }
-    organism <- v[1]
-    genome_build <- v[2]
-    ensembl_version <- v[3]
-
-    gtf <- rtracklayer::readGFF(ensembl_GTF_file,version=2)
-
-    tibble(organism=organism,
-           genome_build=genome_build,
-           ensembl_version=ensembl_version,
-           refseqIDs=unique(gtf[gtf$source=="RefSeq","gene_id"]) )
-                                
-        
-}
-
-problematic_IDs  <- function(mapping=mappings[!is.na(mappings)],
-                             target_release="103",
-                             keep=mitoIDs) {
-    
-    ## discard releases > target_release
-    mapping <- mapping[sapply(mapping,
-                              function(m)as.numeric(m[nrow(m),"Release"])<=as.numeric(target_release))]
-    
-    ## Did the ID switch away from the initial ID (which is the name of its list entry)
-    ## in any release (previous or target)?
-    switched <-  sapply(names(mapping),
-                        function(n)any(n != sub("\\.\\d+$","",
-                                                mapping[[n]][,"New stable ID"]))
-                        )
-    
-    ## new ID and release at the most current entry for each Ensembl ID
-    last_newID   <- sapply(mapping,function(m)sub("\\.\\d+$","",m[nrow(m),"New stable ID"]))
-    last_release <- sapply(mapping,function(m)as.numeric(m[nrow(m),"Release"]))
-    
-    
-    ## the Ensembl IDs which will be returned as "potentially bad"
-    ## (to be discarded, or potentially renamed to a more current ID): 
-    potentially_bad <- setdiff(names(mapping)[(last_release < as.numeric(target_release) | switched)],
-                               keep)
-    
-    
-    
-    ## break the "potentially bad" IDs up into subsets:
-    
-    retired <- names(which(last_newID[potentially_bad]=="<retired>"))
-    current_switch <- names(which( (last_release[potentially_bad]==target_release)
-                                  &
-                                  ((last_newID[potentially_bad] != names(last_newID[potentially_bad]))  ## an actual switch
-                                      & 
-                                      (last_newID[potentially_bad] != "<retired>"))                     ## not a "retirement"
-                                  )
-                            )
-    list(retired=retired, ## clearly out of the game
-         current_switch=last_newID[current_switch], ## these may be kept and renamed
-         rest=setdiff(potentially_bad,
-                      union(retired,current_switch)))
-    
-}
-
-
 
 map_Ensembl_versions_from_IDMapper_output <- function(IDMapper_output,
-                                                      target_release="105") {
+                                                      target_release="104",
+                                                      query_IDs) {
+
     ## parse an output file created by and downloaded from
     ## https://www.ensembl.org/Mus_musculus/Tools/IDMapper
     ## (or the equivalent for another species)
 
+    ## The IDMapper result is expected to derive from a query 
+    ## with the Ensembl IDs in parameter "queryIDs".
+
+    ## NOTE that the downloaded results file is in some respects different
+    ## from the results on the web page displayed on completion of the search:
+    ## - The results file contains genes with "New stable ID"=="<retired>";
+    ##   there is no entry for these genes on the page
+    ##
+    ## - The results file contains some empty sections 
+    ##   ("missing" in the code below).
+    ##   They are not attributable to specific query Ensembl IDs,
+    ##   but the number of empty sections equals the number of query genes 
+    ##   with no non-empty section in the results file,
+    ##   so one very likely generates the other.
+    ##   On the web page, genes with no non-empty section are not shown.
+    ##
+    ## - Very few entries in the results file contain a line with release="105"
+    ##   (for results file KLjMWDn3CtXEFwcB-7995102.idmapper.txt,
+    ##    where "105" is the current release).
+    ##   On the web page, all displayed entries contain such a line.
+    ##   ** So obviously what is displayed on the web page is also 
+    ##      in the current release. 
+    ##      But the ID may have been changed from the query ID.
+    ##   **
+    ##  --> distinguish in output of this function:
+    ##  (A1) <retired>
+    ##  (A2) missing in results file
+    ##  (B) ID changed in most recent line of the result file entry
+    ##  (C) the rest (should be OK)
+    
     l <- readLines(IDMapper_output)
     header <- "Old stable ID, New stable ID, Release, Mapping score"
 
@@ -95,57 +46,84 @@ map_Ensembl_versions_from_IDMapper_output <- function(IDMapper_output,
     cols <- strsplit(header,",\\s*")[[1]]
     mappings <- sapply(1:length(from),
                        function(i) {
-                           ##cat(i,"\n")
-                           this_l <-  strsplit(setdiff(l[from[i]:to[i]],""),",\\s*")
-                           if        (length(this_l)==0) {
-                               return(NA) ## was: NULL
-                           } else if (length(this_l)==1) {
-                               d <- matrix(this_l[[1]],nrow=1)
-                           } else {
-                               d <- Reduce(rbind,
-                                           strsplit(setdiff(l[from[i]:to[i]],""),",\\s*")
-                                           )
-                           }
+                         ##cat(i,"\n")
+                         this_l <-  strsplit(setdiff(l[from[i]:to[i]],""),
+                                             ",\\s*")
+                         if        (length(this_l)==0) {
+                             return(NA) ## was: NULL
+                         } else if (length(this_l)==1) {
+                             d <- matrix(this_l[[1]],nrow=1)
+                         } else {
+                             d <- Reduce(rbind,
+                                         strsplit(setdiff(l[from[i]:to[i]],""),
+                                                  ",\\s*")
+                                         )
+                         }
                            
-                           d <- as.data.frame(d)
-                           colnames(d) <- cols
+                         d <- as.data.frame(d)
+                         colnames(d) <- cols
                            
-                           d
-                       },simplify=FALSE)
-    missing <- which(is.na(mappings))
+                         d
+                     },simplify=FALSE)
+    missing <- is.na(mappings)
 
-
-    ## get the Ensembl ID (without version) corresponding to each "mappings" entry
-    n <- sapply(mappings[-missing], 
+    ## get the Ensembl ID (without version) 
+    ## corresponding to each "mappings" entry
+    n <- sapply(mappings[!missing], 
                 function(m) {
                     id <- unique(sub("\\.\\d+$","",m[,"Old stable ID"]))
-                    if(length(id)>1) browser() ## >1 old ID per entry -- should not happen
+                    if(length(id)>1) browser() 
+                    ## >1 old ID per entry -- should not happen
 
                     id
                 })
-    nm <- rep(NA,length(mappings))
-    nm[-missing] <- n
-    names(mappings) <- nm
+    names(mappings)[!missing] <- n
 
-    ## The mitochondrial IDs of the mouse Ensembl annotations come from the early release v64,
-    ## but they are seemingly not updated in newer releases -> they should be kept when mapping to a newer release.
-    ## Luckily they are (at least in v103 and v105, others not checked) the only genes with source=="RefSeq",
-    ## so they are easy to identify.
-    ## Extract them here ...
-    fn <-"~/CECAD/Pipeline/Bioc_annotation/Ensembl103/Mus_musculus.GRCm39.103.gtf"
-    mitoIDs <- refseq_IDs_from_EnsemblGTF(ensembl_GTF_file=fn)$refseqIDs
+    if(any(missing)) {
+        ## missing IDs should be those query IDs which had no hit:
+        missed_query_IDs <- setdiff(query_IDs,n)
+        if(sum(missing)!=length(missed_query_IDs)) {
+            stop(paste("Inconsistent number of missing IDs in",
+                       "map_Ensembl_versions_from_IDMapper_output: please check!"))
+        }
+        ## assign dummy result entries for the missing IDs
+        mappings[missing] <-
+            sapply(missed_query_IDs,
+                   function(i) {
+                       d <- data.frame(i,"<missing>","-1","-1")
+                       colnames(d) <- c("Old stable ID",
+                                        "New stable ID",
+                                        "Release", "Mapping score")
+                       d
+                   }, simplify=FALSE)
+        ## the names are not set by the assignment, why?
+        names(mappings)[missing] <- missed_query_IDs 
+    }
 
-   
-    ## .. and then pass them to problematic_IDs, which returns IDs which have been retired, have no entries in newer
-    ## releases, or have been assigned a new ID in the target release:
-    problematic_IDs(mapping=mappings[!is.na(mappings)],
-                    target_release="103",
-                    keep=mitoIDs)
 
 
+    ## for each Ensembl ID, get the last assigned "New stable ID",
+    ## and the release in which it was assigned:
+    res <- data.frame(t(sapply(mappings,
+                               function(m) {
+                                   ## get the last entry referring to the
+                                   ## most recent release which is equal to or
+                                   ## before target_release
+                                   ## (ignore newer releases):
+                                   l <- which.max(m$Release<=target_release)
 
+                                   ## extract the valid ID and the release number:
+                                   n <- m[l,"New stable ID"]
+                                   if(grepl("^ENS.+\\.\\d+$",n)) {
+                                       n <- sub("\\.\\d+$","",n)
+                                   }
+                                   c(newID=n,release=m[l,"Release"])
+                               })))
+    res$retired <- res$newID == "<retired>"
+    res$missing <- res$newID == "<missing>"
+    res$changed <- !res$retired & !res$missing & (res$newID != rownames(res))
 
-
+    res
 
 }
 

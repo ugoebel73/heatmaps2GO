@@ -77,32 +77,120 @@ DGE_results <- sapply(readxl::excel_sheets(path),
 ## the v100/102 Ensembl IDs actually used in the DGE analysis:
 DGE_genes <- DGE_results[[1]]$ensembl_geneid ## same for all comparisons 
                                              ## -> use [[1]]
+
+
 ## --------------------------------------------------------------------------
 ## map DGE_genes to Ensembl v103, which was current on 2021-Apr13, 
 ## the ENSOURCEDATE of org.Mm.eg.db 3.14.0
 ensembl_IDmapper_results_Jan31_2022 <- 
   "./DATA/KLjMWDn3CtXEFwcB-7995102.idmapper.txt" ## for input=DGE_genes,
                                                  ## run by hand
-
-problematic_IDs_v103 <- 
+mappedIDs_v103 <- 
   map_Ensembl_versions_from_IDMapper_output(ensembl_IDmapper_results_Jan31_2022,
-                                            target_release <- "103")
-## "retired" IDs should be discarded,
-## IDs with a "current_switch" can be mapped to the new, current ID,
-## but for the "rest" the situation is less clear.
-## Brute force solution here: check whether they do occur in the v103 GTF file:
+                                            target_release="103",
+                                            query_IDs=DGE_genes)
+
+## How many IDs are affected?
+sum(mappedIDs_v103$retired | mappedIDs_v103$missing)
+## [1] 106
+sum(mappedIDs_v103$changed)
+## [1] 19
+sum(mappedIDs_v103$retired | mappedIDs_v103$missing | mappedIDs_v103$changed) /
+length(DGE_genes)
+## [1] 0.00688971
+
+## convert to a vector for mapping old IDs to current IDs:
+DGE_genes_v103 <- setNames(DGE_genes,DGE_genes)
+i <- which(mappedIDs_v103$changed)
+DGE_genes_v103[rownames(mappedIDs_v103)[i]] <- mappedIDs_v103[i,"newID"]
+i <- which(mappedIDs_v103$retired | mappedIDs_v103$missing)
+DGE_genes_v103[rownames(mappedIDs_v103)[i]] <- NA
+
 ## ..........................................................................
-v103 <- rtracklayer::readGFF("./DATA/Mus_musculus.GRCm39.103.gtf", 
-                             version=2)
-any(problematic_IDs_v103$rest %in% v103$gene_id)
-##[1] FALSE
-## --> discard these, too (altogether 194 genes of 18143, =~ 1%)
+## how do the IDmapper results relate to the annotation files?
+v103_gtf_file <- "./DATA/Mus_musculus.GRCm39.103.gtf"
+v103_gtf <- rtracklayer::readGFF(v103_gtf_file,version=2)
+v100_gtf_file <- "./DATA/Mus_musculus.GRCm38.100.gtf"
+v100_gtf <- rtracklayer::readGFF(v100_gtf_file,version=2)
+
+v103_fna_file <- "./DATA/Mus_musculus.GRCm39.103.rna.fa"
+v103_fna <- Biostrings::readDNAStringSet(v103_fna_file)
+v100_fna_file <- "./DATA/Mus_musculus.GRCm38.100.rna.fa"
+v100_fna <- Biostrings::readDNAStringSet(v100_fna_file)
+
 ## ..........................................................................
-DGE_genes_v103 <- setdiff(DGE_genes,
-                                union(problematic_IDs_v103$retired,
-                                      problematic_IDs_v103$rest))
-switchedID <- DGE_genes_v103 %in% names(problematic_IDs_v103$current_switch)
-############ HIER
+table(DGE_genes %in% v103_gtf$gene_id)
+##FALSE  TRUE 
+##  302 17841 
+
+g <- names(DGE_genes_v103)[which(is.na(DGE_genes_v103) |
+                                   !(names(DGE_genes_v103)==DGE_genes_v103))]
+all(g %in% setdiff(DGE_genes,v103_gtf$gene_id))
+##[1] TRUE ## all retired|missing|changed v100 IDs are indeed not in v103_gtf
+
+## v100_gtf itself is missing IDs:
+table(DGE_genes %in% v100_gtf$gene_id)
+## FALSE  TRUE 
+##   218 17925 
+all(DGE_genes[!(DGE_genes %in% v100_gtf$gene_id)] %in% 
+    DGE_genes[!(DGE_genes %in% v103_gtf$gene_id)])
+##[1] TRUE  ## a subset of the IDs missing in v103
+
+## The kallisto index was based on Mus_musculus.GRCm38.100.rna.fa.
+## Indeed, this file does contain all IDs -- but the v100 gtf file does not!
+genes_from_rna_fasta_v100 <- 
+  extractCapturedSubstrings("\\sgene:(ENSMUSG[^.]+)\\.\\d+",names(v100_fna))
+table(DGE_genes %in% genes_from_rna_fasta_v100)
+## TRUE 
+##18143 
+
+## In Ensembl version v103, these IDs are missing from the fasta file
+## as well as from the gtf file.
+genes_from_rna_fasta_v103 <- 
+  extractCapturedSubstrings("\\sgene:(ENSMUSG[^.]+)\\.\\d+",names(v103_fna))
+table(DGE_genes %in% genes_from_rna_fasta_v103)
+## FALSE  TRUE 
+##  302 17812 
+
+## Make sure that the 302 genes are indeed the same in both cases:
+identical(x <- sort(setdiff(DGE_genes,v103_gtf$gene_id)),
+               sort(setdiff(DGE_genes,genes_from_rna_fasta_v103)))
+## [1] TRUE
+
+unexplained <- setdiff(x,g) ## not explained by retired|missing|changed
+
+tmp <- unique(t(sapply(names(v100_fna)[genes_from_rna_fasta_v100 %in% unexplained],
+                       extractCapturedSubstrings,
+                       pattern="\\s([^:\\s]+):GRCm38:([^:]+).+\\sgene:(ENSMUSG[^.]+)\\.\\d+")))
+table(tmp[,1]) ## it's not only stuff on scaffolds
+## chromosome   scaffold 
+##        172          5 
+table(grepl("^\\d+$",tmp[,2]))
+## FALSE  TRUE 
+##   157    20 [TRUE  = pure numerical=regular nuclear chromosome
+##              FALSE = other = mostly PATCHes] [M or X/Y not among them]
+
+unname(tmp[,3][grepl("^\\d+$",tmp[,2])]) ## unexplained on regular chromosomes
+
+
+## Possible way to deal with the version discrepancy (if we don't decide to
+## just ignore it):
+## Of the 302 IDs missing in the v103 .rna.fa file but present in v100,
+## 125 are explained by explicit retirements or ID changes (source: IDMapper),
+## and 157 are on non-canonical chromosomes or scaffolds.
+## It could be justified to simply discard genes with any of these 282 IDs. 
+## The 20 remaining "unexplained" IDs I would leave in, given that they are 
+## still listed in the IDMapper result.
+##
+## On the other hand it could also be justified to leave everything in,
+## because indeed all DGE_genes have an ENSEMBL entry in org.Mm.eg.db
+## (see below).
+## This means that the GOALL<->ENSEMBL relation in this OrgDb package
+## (with GOSOURCEDATE: 2021-09-01
+##       ENSOURCEDATE: 2021-Apr13 ) does know about the problematic IDs 
+## and should have assigned them meaningful GO terms (?).
+
+
 ## --------------------------------------------------------------------------
 ## significantly regulated  v100/102 Ensembl IDs:
 minAbsLFC <- log2(1.5) ## that is, abs(FoldChange)>=1.5 ##
@@ -138,10 +226,21 @@ org_genes2GO <- AnnotationDbi::select(org.Mm.eg.db,
                      rename(Evidence=EVIDENCEALL)                          %>%
                      rename(GO_term=GOALL)                                 %>%
                      rename(Ontology=ONTOLOGYALL)             
+## NOTE: before filtering, all DGE_genes are represented in the ENSEMBL column)
+##       (not shown)
 
 ## add an indicator column for whether or not a gene is in DGE_genes:
 org_genes2GO$in_DGE <- org_genes2GO$ENSEMBL %in% DGE_genes
 org_genes2GO$in_sig <- org_genes2GO$ENSEMBL %in% significant_DGE_genes
+
+## note that quite a fraction of the DGE_genes are not found:
+length(unique(org_genes2GO %>% filter(in_DGE) %>% pull(ENSEMBL)))
+##[1] 15296
+
+## but all of them are in the package, although 125 of them should not
+## exist any more in Ensembl v103:
+length(intersect(bla$ENSEMBL, DGE_genes))
+## [1] 18143
 
 ## --------------------------------------------------------------------------
 ## get an Ensembl ID <-> Gene Ontology relation from biomRt:
