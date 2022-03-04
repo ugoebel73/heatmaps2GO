@@ -1,3 +1,12 @@
+extractCapturedSubstrings <- function(pattern, string, global_search=FALSE) {
+    if(global_search) {
+        tmp <- attributes(gregexpr(pattern,string,perl=TRUE)[[1]])[c("capture.start","capture.length")] ## only 1 input string -->> [[1]]
+    } else {
+        tmp <- attributes( regexpr(pattern,string,perl=TRUE)     )[c("capture.start","capture.length")]
+    }
+    substring(string,first=as.vector(tmp$capture.start),last=as.vector(tmp$capture.start+tmp$capture.length-1))
+}
+
 ## -----------------------------------------------------------------------------
 ## functions by Richard Acton (slightly modified and renamed by UG)
 #' make_ensdb_extractor

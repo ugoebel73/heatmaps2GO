@@ -826,9 +826,20 @@ km_org_sig_symbolsets <- map_genesets(genesets= km_org_sig_genesets,
                                       mapping=voom_mapping,
                                       id_col="GO_group")
 
+## Feb 7, 2022 (temporary, on request of Carien): ...........................
 
+## ..........................................................................
+tmp_genesets <- km_org_sig_genesets
+tmp_genesets[[2]] <- setdiff(tmp_genesets[[2]],
+                             GO_genesets$org_sig[["GO:0050727"]]) ## all but 1
+tmp_symbolsets <- map_genesets(genesets= tmp_genesets,
+                               mapping=voom_mapping,
+                               id_col="GO_group")
 ## --------------------------------------------------------------------------
 ## Can I partition the new clustering similar to the Enrichr-based old one?
+
+## extract the GO terms contributing to the "flattened gene sets" in 
+## Carien's subfigures 1 and 2:
 load("DATA/order_464.RData")
 subfig_terms <- sapply(c(1,2),
                        function(i) {
@@ -844,7 +855,7 @@ subfig_terms <- sapply(c(1,2),
                                             ## had "." instead of ":"
                         },simplify=FALSE)
 all(our_GO_terms %in% subfig_terms[[2]])
-##[1] TRUE
+##[1] TRUE  ## not very specific!
 sapply(GO_info[sub("\\.",":",subfig_terms[[1]])],function(x)x@Term)
 ## GO:0070498 
 ## "interleukin-1-mediated signaling pathway" 
@@ -862,7 +873,7 @@ sapply(GO_info[sub("\\.",":",subfig_terms[[1]])],function(x)x@Term)
 ## "neutrophil degranulation" 
 
 sapply(GO_info[sub("\\.",":",setdiff(subfig_terms[[2]],subfig_terms[[1]]))],
-       function(x)x@Term)
+       function(x)x@Term) ## the GO terms which are specific for subfigure 2
 ## GO:0071456 
 ## "cellular response to hypoxia" 
 ## GO:0002479 
@@ -871,29 +882,57 @@ sapply(GO_info[sub("\\.",":",setdiff(subfig_terms[[2]],subfig_terms[[1]]))],
 ## GO:0036294 
 ## "cellular response to decreased oxygen levels" 
 
-## define for now:
-my_subfig_terms <- subfig_terms[[1]]
-my_subfig_terms <- setdiff(subfig_terms[[2]],subfig_terms[[1]])
-## (GO:0002479 should go from subfig2)
-
+## decided "by eye" that km_org_sig_symbolset[c(2,3),] are the only ones 
+## which contain the hypoxia-related terms:
 km_org_sig_subfigs <- list(setdiff(1:nrow(km_org_sig_symbolsets),c(2,3)),
                            c(2,3))
 
 ## a reduced dataset with a short name for testing:
 km <-  km_org_sig_symbolsets[-c(1,3),]
 km_subfigs <- list(c(2:6),c(1))
+## Comment Feb 7,2022: I do not fully understand why I removed 
+## km_org_sig_symbolsets[c(1,3),] from the figures which were 
+## eventually presented as the *FOR_DISCUSSION_ONLY*pdf" figures on Sciebo.
+## [3],] is  a small set (2 genes) which contains a "hypoxia term" (GO.0036294)
+## as a 50% contribution, but the 100% terms are subfig 1 -- this makes sense.
+## [1,] is also small (5 genes) and it is mixed with subfig 2 insofar 
+## as it contains GO.0050727 (at 100%) which is also in the only prominent
+## "subfig 2 set" [2,] -- but there it has only 4%, so no real clash.
+## Anyway it is now gone from subfig 2 (tmp_genesets) on request of Carien.
+
+## Feb 7, 2022 (temporary, on request of Carien): ...........................
+tmp_km <-  tmp_symbolsets[-3,]
+tmp_km$GO_group[2] <- sub(", GO.0050727:4%","",tmp_km$GO_group[2])
+tmp_subfigs <- list(setdiff(1:nrow(tmp_km),2),c(2))
+
+## ..........................................................................
 
 ## --------------------------------------------------------------------------
 ## Draw the heatmap(s):
-subfig_index <- 1
+
+library(ComplexHeatmap)
+
+
+for(subfig_index in 1:2) {
+  
+
 tmp <- stack_submatrices(voom_mapped, 
-                         setNames(km$SYMBOL[km_subfigs[[subfig_index]]],
-                                  km$GO_group[km_subfigs[[subfig_index]]])
+                         ##setNames(km$SYMBOL[km_subfigs[[subfig_index]]],
+                        ##          km$GO_group[km_subfigs[[subfig_index]]])
+## Feb 7, 2022 (temporary, on request of Carien): ...........................
+                         setNames(tmp_km$SYMBOL[tmp_subfigs[[subfig_index]]],
+                                  tmp_km$GO_group[tmp_subfigs[[subfig_index]]])
+## ..........................................................................
                          )
+
+rownames_fontsizes <- c(4,8)
+
 m1 <- tmp$mat
 r1 <- tmp$grp
 
-tmp <- sapply(km$GO_group[km_subfigs[[subfig_index]]],
+##tmp <- sapply(km$GO_group[km_subfigs[[subfig_index]]],
+tmp <- sapply(tmp_km$GO_group[tmp_subfigs[[subfig_index]]],
+                            
               function(x) sapply(extractCapturedSubstrings(x,
                                                     pattern="(GO\\.\\d+):",
                                                     global_search=TRUE),
@@ -919,9 +958,11 @@ draw_heatmap(m1,
              condition_labels=condition_labels,   
              column_split=conditions,
              row_split=r1,
+             rownames_fontsize = rownames_fontsizes[subfig_index],
              tags=lapply(text_tags,names),##lapply(text_tags,function(x)paste(names(x),x,sep=":")),##text_tags,
              column_labels=colnames(m1),
              show_column_names=TRUE,
-             outfile=NULL) ##paste0("testout_",subfig_index,".pdf"))
-             
+##           outfile=NULL) ##paste0("testout_",subfig_index,".pdf"))
+             paste0("subfigure_",subfig_index,"_for_discussion_only.pdf"))
 
+}
